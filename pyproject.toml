@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 280
+target-version = "py310"
+select = ["E","F","I","B","UP"]
+exclude = ["build","dist",".venv","venv"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["causal-inference"]

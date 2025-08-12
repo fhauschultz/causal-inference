@@ -1,0 +1,18 @@
+{
+    // Linting
+    "python.linting.enabled": true,
+    "python.linting.ruffEnabled": true, // for older Python extension versions
+    "ruff.lint.enable": true,           // for the dedicated Ruff extension
+
+    // Formatting (make Ruff the default)
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true
+    },
+
+    // Optional: run lint on save
+    "editor.codeActionsOnSave": {
+        "source.fixAll": true
+    }
+}
