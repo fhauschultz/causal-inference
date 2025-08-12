@@ -147,9 +147,9 @@ def package_data_fixed_effects(data, treatment_col, time_col, outcome_col=None, 
     cov_data = None
     if covariates:
         cov_data = data[covariates]
-    treatment_dummy = pd.get_dummies(data[treatment_col], prefix="treatment", drop_first=True)
-    time_dummies = pd.get_dummies(data[time_col], prefix="time")
-    post_treatment_interaction = pd.get_dummies(data["post_treatment_interaction"], prefix="time_treatment_effect", drop_first=True)
+    treatment_dummy = pd.get_dummies(data[treatment_col], prefix="treatment", drop_first=True, dtype=float)
+    time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
+    post_treatment_interaction = pd.get_dummies(data["post_treatment_interaction"], prefix="time_treatment_effect", drop_first=True, dtype=float)
     x = pd.concat([time_dummies, treatment_dummy, post_treatment_interaction, cov_data], axis=1)
     if outcome_col:
         y = data[outcome_col]
@@ -166,7 +166,7 @@ def bdid_did_data(data, unit_col, time_col, treatment_col, treatment_start_date,
 
 def event_study_data(data, time_col, treatment_col, outcome_col, covariates=None):
     # Create time dummies and identify post-treatment periods
-    time_dummies = pd.get_dummies(data[time_col], prefix="time")
+    time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
     post_treatment_interaction = time_dummies.mul(data[treatment_col], axis=0)
 
     # Rename post_treatment_interaction columns
