@@ -6,3 +6,6 @@ exclude = ["build","dist",".venv","venv"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["causal-inference"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
