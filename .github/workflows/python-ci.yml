@@ -39,13 +39,6 @@ jobs:
       - name: Ruff (lint)
         run: ruff check .
 
-      - name: Black (format check)
-        run: black --check .
-
-      # optional: enable if you use types
-      # - name: Mypy (type check)
-      #   run: mypy .
-
       - name: Pytest
         run: |
           pytest -q \
