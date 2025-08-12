@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from prids.utils.modelling.causal_inference import BinaryDiD, EventStudy
-from prids.utils.modelling.causal_inference.difference_in_differences import conf_int_robust
+
+from causal_inference import BinaryDiD, EventStudy
+from causal_inference.difference_in_differences import conf_int_robust
 
 
 def test_estimates():
