@@ -4,5 +4,5 @@ pytest
 matplotlib
 statsmodels
 seaborn
-sklearn
+scikit-learn
 datetime
