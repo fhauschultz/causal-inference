@@ -4,3 +4,4 @@ pytest
 matplotlib
 statsmodels
 seaborn
+sklearn
