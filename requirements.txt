@@ -3,3 +3,4 @@ pandas
 pytest
 matplotlib
 statsmodels
+seaborn
