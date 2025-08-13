@@ -102,3 +102,21 @@ def test_get_good_fit_units():
     assert "unit1" in good_fit_units
     assert "unit2" not in good_fit_units
     assert "unit3" not in good_fit_units
+
+
+def test_that_plot_works_if_fit_has_not_been_run(sample_data):
+    """
+    Test if plot works even if fit has not been run
+
+    """
+    synth = sc.SyntheticControl(
+        data=sample_data,
+        unit_col="state",
+        time_col="year",
+        value_col="cigsale",
+        treated_unit="California",
+        experiment_date=1988,
+        covariates=["retprice"],
+    )
+
+    synth.plot()
