@@ -165,8 +165,8 @@ class SyntheticControl:
     -----------
         data: pd.DataFrame
             DataFrame containing the data.
-        unit_col: str
-            Column name for the units.
+        unit_colx: str
+            Column name or list of column names for the units.
         time_col: str
             Column name for the time periods.
         value_col: str
@@ -179,15 +179,15 @@ class SyntheticControl:
             Model to use for fitting. Defaults to ClassicModelFitter.
     """
 
-    def __init__(self, data, unit_col, time_col, value_col, experiment_date, treated_unit, training_end_date=None, covariates=None, model=None):
+    def __init__(self, data, unit_cols, time_col, value_col, experiment_date, treated_unit, training_end_date=None, covariates=None, model=None):
         self.covariates = covariates
         self.time_col = time_col
-        self.unit_col = unit_col
+        self.unit_col = unit_cols
         self.value_col = value_col
-        self.cols = [unit_col, time_col, value_col]
+        self.cols = [*unit_cols, time_col, value_col]
         if self.covariates:
             self.cols += self.covariates
-        self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, unit_col)
+        self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, unit_cols)
         self.experiment_date = experiment_date
         self.treated_unit = treated_unit
         self.training_end_date = training_end_date
@@ -415,7 +415,7 @@ class SyntheticControl:
         plt.show()
 
 
-def filter_donor_units(df, treatment_unit, unit_col):
+def filter_donor_units(df, treatment_unit, unit_cols):
     """
     Filter a DataFrame to retain only donor units (and the treated unit) that have the same number
     of observations as the treatment unit.
@@ -427,7 +427,7 @@ def filter_donor_units(df, treatment_unit, unit_col):
         treatment_unit: str
             Identifier for the treatment unit.
         unit_col: str
-            Column name for the units.
+            Column name or list of columns names for the units.
 
     Returns:
     --------
@@ -435,7 +435,7 @@ def filter_donor_units(df, treatment_unit, unit_col):
         same number of observations as the treatment unit.
     """
     # Count observations for each unit
-    unit_counts = df.groupby(unit_col).size()
+    unit_counts = df.groupby(unit_cols).size()
 
     # Get the number of observations for the treatment unit
     treatment_count = unit_counts[treatment_unit]
@@ -444,6 +444,6 @@ def filter_donor_units(df, treatment_unit, unit_col):
     matching_units = unit_counts[unit_counts >= treatment_count].index
 
     # Filter the DataFrame
-    filtered_df = df[df[unit_col].isin(matching_units)]
+    filtered_df = df[df[unit_cols].isin(matching_units)]
 
     return filtered_df

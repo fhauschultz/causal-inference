@@ -8,9 +8,9 @@ from scipy.stats import t
 
 
 class BaseDifferenceInDifferences:
-    def __init__(self, data, group_cols, time_col, treatment_col, value_vars, experiment_start_date, experiment_end_date=None, covariates=None, confidence_level=0.1, cov_type="HC3", sklearn_model=None):
+    def __init__(self, data, unit_cols, time_col, treatment_col, value_vars, experiment_start_date, experiment_end_date=None, covariates=None, confidence_level=0.1, cov_type="HC3", sklearn_model=None):
         self.data = data
-        self.group_cols = group_cols
+        self.unit_cols = unit_cols
         self.time_col = time_col
         self.treatment_col = treatment_col
         self.value_vars = value_vars
