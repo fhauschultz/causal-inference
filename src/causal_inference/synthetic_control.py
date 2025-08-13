@@ -165,8 +165,8 @@ class SyntheticControl:
     -----------
         data: pd.DataFrame
             DataFrame containing the data.
-        unit_col: str
-            Column name for the units.
+        unit_cols: str
+            Colum name or list of column names for the units
         time_col: str
             Column name for the time periods.
         value_col: str
@@ -174,7 +174,7 @@ class SyntheticControl:
         experiment_date: str or pd.Timestamp
             Date of the experiment.
         treated_unit: str
-            Identifier for the treated unit.
+            Identifier for the treated unit (e.g., "California" or ["California", "Women"]).
         model: object, optional
             Model to use for fitting. Defaults to ClassicModelFitter.
     """
@@ -182,14 +182,16 @@ class SyntheticControl:
     def __init__(self, data, unit_col, time_col, value_col, experiment_date, treated_unit, training_end_date=None, covariates=None, model=None):
         self.covariates = covariates
         self.time_col = time_col
-        self.unit_col = unit_col
+        # Handle unit_col: join list with underscores, or use string directly
+        self.unit_col = "_".join(unit_col) if isinstance(unit_col, list) else unit_col
+        # Handle treated_unit: join list with underscores, or use string directly
+        self.treated_unit = "_".join(treated_unit) if isinstance(treated_unit, list) else treated_unit
         self.value_col = value_col
         self.cols = [unit_col, time_col, value_col]
         if self.covariates:
             self.cols += self.covariates
         self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, unit_col)
         self.experiment_date = experiment_date
-        self.treated_unit = treated_unit
         self.training_end_date = training_end_date
         self.se_computed = False
         self.se = None
