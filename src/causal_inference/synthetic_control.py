@@ -165,8 +165,8 @@ class SyntheticControl:
     -----------
         data: pd.DataFrame
             DataFrame containing the data.
-        unit_colx: str
-            Column name or list of column names for the units.
+        unit_col: str
+            Column name for the units.
         time_col: str
             Column name for the time periods.
         value_col: str
@@ -179,19 +179,15 @@ class SyntheticControl:
             Model to use for fitting. Defaults to ClassicModelFitter.
     """
 
-    def __init__(self, data, unit_cols, time_col, value_col, experiment_date, treated_unit, training_end_date=None, covariates=None, model=None):
+    def __init__(self, data, unit_col, time_col, value_col, experiment_date, treated_unit, training_end_date=None, covariates=None, model=None):
         self.covariates = covariates
         self.time_col = time_col
-        # Ensure unit_col is always a list
-        self.unit_cols = [unit_cols] if isinstance(unit_cols, str) else unit_cols
+        self.unit_col = unit_col
         self.value_col = value_col
-        self.cols = self.unit_cols + [time_col, value_col]
+        self.cols = [unit_col, time_col, value_col]
         if self.covariates:
             self.cols += self.covariates
-
-        # Filter data to donor units with matching observation counts
-        self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, self.unit_cols)
-
+        self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, unit_col)
         self.experiment_date = experiment_date
         self.treated_unit = treated_unit
         self.training_end_date = training_end_date
@@ -214,11 +210,8 @@ class SyntheticControl:
         --------
             pd.Series: Values for the treated unit.
         """
-        outcome_data = self.data[[*self.unit_cols, self.time_col, self.value_col]]
-
-        outcome_data = outcome_data[outcome_data[self.unit_cols] == treated_unit].pivot(index=self.time_col, columns=self.unit_cols, values=self.value_col).iloc[:, 0]
-        print(outcome_data)
-        return outcome_data
+        outcome_data = self.data[[self.unit_col, self.time_col, self.value_col]]
+        return outcome_data[outcome_data[self.unit_col] == treated_unit].pivot(index=self.time_col, columns=self.unit_col, values=self.value_col).iloc[:, 0]
 
     def _fit_model(self, treated_unit, experiment_date, training_end_date=None):
         """
@@ -237,7 +230,7 @@ class SyntheticControl:
         --------
             tuple: (synthetic_control, weights)
         """
-        (x_train_treated, x_train_donor, x_outcome_treated, x_outcome_donor, donor_units) = prepare_data(self.data, self.time_col, self.unit_cols, self.value_col, treated_unit, experiment_date, training_end_date, self.covariates)
+        (x_train_treated, x_train_donor, x_outcome_treated, x_outcome_donor, donor_units) = prepare_data(self.data, self.time_col, self.unit_col, self.value_col, treated_unit, experiment_date, training_end_date, self.covariates)
         self.model.fit(x_train_donor, x_train_treated)
         weights = None
 
@@ -328,7 +321,7 @@ class SyntheticControl:
         tolerance_pre_treatment_pruning_pct = 10
         if not significance_level:
             significance_level = 5
-        donor_units = [unit for unit in self.data[self.unit_cols].unique() if unit != self.treated_unit]
+        donor_units = [unit for unit in self.data[self.unit_col].unique() if unit != self.treated_unit]
         placebo_effects = []
         for donor in donor_units:
             synthetic_control, _ = self._fit_model(donor, experiment_date)
@@ -373,9 +366,12 @@ class SyntheticControl:
         """
         Plot the treated unit and synthetic control.
 
+        Raises:
+        -------
+            ValueError: If synthetic control has not been computed.
         """
         if self.synthetic_control is None:
-            self.fit()
+            raise ValueError("Synthetic control has not been computed. Please run the fit method first.")
         impact = self._get_results()
 
         plt.figure(figsize=(10, 6))
@@ -422,7 +418,7 @@ class SyntheticControl:
         plt.show()
 
 
-def filter_donor_units(df, treatment_unit, unit_cols):
+def filter_donor_units(df, treatment_unit, unit_col):
     """
     Filter a DataFrame to retain only donor units (and the treated unit) that have the same number
     of observations as the treatment unit.
@@ -434,7 +430,7 @@ def filter_donor_units(df, treatment_unit, unit_cols):
         treatment_unit: str
             Identifier for the treatment unit.
         unit_col: str
-            Column name or list of columns names for the units.
+            Column name for the units.
 
     Returns:
     --------
@@ -442,7 +438,7 @@ def filter_donor_units(df, treatment_unit, unit_cols):
         same number of observations as the treatment unit.
     """
     # Count observations for each unit
-    unit_counts = df.groupby(unit_cols).size()
+    unit_counts = df.groupby(unit_col).size()
 
     # Get the number of observations for the treatment unit
     treatment_count = unit_counts[treatment_unit]
@@ -451,6 +447,6 @@ def filter_donor_units(df, treatment_unit, unit_cols):
     matching_units = unit_counts[unit_counts >= treatment_count].index
 
     # Filter the DataFrame
-    filtered_df = df[df[unit_cols].isin(matching_units)]
+    filtered_df = df[df[unit_col].isin(matching_units)]
 
     return filtered_df
