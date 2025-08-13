@@ -366,12 +366,9 @@ class SyntheticControl:
         """
         Plot the treated unit and synthetic control.
 
-        Raises:
-        -------
-            ValueError: If synthetic control has not been computed.
         """
         if self.synthetic_control is None:
-            raise ValueError("Synthetic control has not been computed. Please run the fit method first.")
+            self.fit()
         impact = self._get_results()
 
         plt.figure(figsize=(10, 6))
