@@ -5,27 +5,32 @@ select = ["E","F","I","B","UP"]
 exclude = ["build","dist",".venv","venv"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["causal-inference"]
-
+known-first-party = ["causal_inference"]
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=69", "wheel", "setuptools-scm>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "causal-inference"
-version = "0.1.0"
+dynamic = ["version"]            # 🔁 version now comes from git tags
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=2.3.2",
   "pandas>=2.3.1",
-  "pytest>=8.4.1",
   "matplotlib>=3.10.5",
   "statsmodels>=0.14.5",
-  "seaborn>=0.13.0",      # adjust when actual version is known
+  "seaborn>=0.13.0",
   "scikit-learn>=1.7.1"
 ]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.4.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools_scm]
+version_scheme = "guess-next-dev"
+local_scheme = "node-and-date"
+fallback_version = "0.0.0"
