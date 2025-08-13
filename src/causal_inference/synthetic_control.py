@@ -215,7 +215,10 @@ class SyntheticControl:
             pd.Series: Values for the treated unit.
         """
         outcome_data = self.data[[*self.unit_cols, self.time_col, self.value_col]]
-        return outcome_data[outcome_data[self.unit_cols] == treated_unit].pivot(index=self.time_col, columns=self.unit_cols, values=self.value_col).iloc[:, 0]
+
+        outcome_data = outcome_data[outcome_data[self.unit_cols] == treated_unit].pivot(index=self.time_col, columns=self.unit_cols, values=self.value_col).iloc[:, 0]
+        print(outcome_data)
+        return outcome_data
 
     def _fit_model(self, treated_unit, experiment_date, training_end_date=None):
         """
