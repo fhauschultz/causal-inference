@@ -366,9 +366,6 @@ class SyntheticControl:
         """
         Plot the treated unit and synthetic control.
 
-        Raises:
-        -------
-            ValueError: If synthetic control has not been computed.
         """
         if self.synthetic_control is None:
             self.fit()
