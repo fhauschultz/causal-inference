@@ -102,7 +102,7 @@ class BinaryDiD(BaseDifferenceInDifferences):
         self.model_effects = {}
         for var in self.value_vars:
             table, model = cumulative_treatment_effects(
-                self.data, self.group_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=self.confidence_level, cov_type=self.cov_type
+                self.data, self.unit_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=self.confidence_level, cov_type=self.cov_type
             )
             self.models[var] = model
             self.model_effects[var] = table
