@@ -214,8 +214,8 @@ class SyntheticControl:
         --------
             pd.Series: Values for the treated unit.
         """
-        outcome_data = self.data[[self.unit_col, self.time_col, self.value_col]]
-        return outcome_data[outcome_data[self.unit_col] == treated_unit].pivot(index=self.time_col, columns=self.unit_col, values=self.value_col).iloc[:, 0]
+        outcome_data = self.data[[*self.unit_cols, self.time_col, self.value_col]]
+        return outcome_data[outcome_data[self.unit_cols] == treated_unit].pivot(index=self.time_col, columns=self.unit_cols, values=self.value_col).iloc[:, 0]
 
     def _fit_model(self, treated_unit, experiment_date, training_end_date=None):
         """
@@ -234,7 +234,7 @@ class SyntheticControl:
         --------
             tuple: (synthetic_control, weights)
         """
-        (x_train_treated, x_train_donor, x_outcome_treated, x_outcome_donor, donor_units) = prepare_data(self.data, self.time_col, self.unit_col, self.value_col, treated_unit, experiment_date, training_end_date, self.covariates)
+        (x_train_treated, x_train_donor, x_outcome_treated, x_outcome_donor, donor_units) = prepare_data(self.data, self.time_col, self.unit_cols, self.value_col, treated_unit, experiment_date, training_end_date, self.covariates)
         self.model.fit(x_train_donor, x_train_treated)
         weights = None
 
@@ -325,7 +325,7 @@ class SyntheticControl:
         tolerance_pre_treatment_pruning_pct = 10
         if not significance_level:
             significance_level = 5
-        donor_units = [unit for unit in self.data[self.unit_col].unique() if unit != self.treated_unit]
+        donor_units = [unit for unit in self.data[self.unit_cols].unique() if unit != self.treated_unit]
         placebo_effects = []
         for donor in donor_units:
             synthetic_control, _ = self._fit_model(donor, experiment_date)
