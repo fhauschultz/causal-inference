@@ -20,4 +20,9 @@ requires-python = ">=3.10"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.0",
+    "statsmodels>=0.14",  # add this
+    # ...other deps
+]
