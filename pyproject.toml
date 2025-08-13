@@ -22,7 +22,7 @@ dependencies = [
   "pytest>=8.4.1",
   "matplotlib>=3.10.5",
   "statsmodels>=0.14.5",
-  "seaborn>=0.14.0",      # adjust when actual version is known
+  "seaborn>=0.13.0",      # adjust when actual version is known
   "scikit-learn>=1.7.1"
 ]
 
