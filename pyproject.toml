@@ -13,7 +13,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "causal-inference"
-dynamic = ["version"]            # 🔁 version now comes from git tags
+dynamic = ["version"]
 requires-python = ">=3.10"
 dependencies = [
   "numpy>=2.3.2",
