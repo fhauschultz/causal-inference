@@ -182,12 +182,16 @@ class SyntheticControl:
     def __init__(self, data, unit_cols, time_col, value_col, experiment_date, treated_unit, training_end_date=None, covariates=None, model=None):
         self.covariates = covariates
         self.time_col = time_col
-        self.unit_col = unit_cols
+        # Ensure unit_col is always a list
+        self.unit_cols = [unit_cols] if isinstance(unit_cols, str) else unit_cols
         self.value_col = value_col
-        self.cols = [*unit_cols, time_col, value_col]
+        self.cols = self.unit_cols + [time_col, value_col]
         if self.covariates:
             self.cols += self.covariates
-        self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, unit_cols)
+
+        # Filter data to donor units with matching observation counts
+        self.data = filter_donor_units(data[self.cols].copy(deep=False), treated_unit, self.unit_cols)
+
         self.experiment_date = experiment_date
         self.treated_unit = treated_unit
         self.training_end_date = training_end_date
