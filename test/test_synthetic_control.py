@@ -25,8 +25,7 @@ def proposition_99_study_test(sample_data):
         unit_col="state",
         time_col="year",
         value_col="cigsale",
-        treated_unit="California",
-        experiment_date=1988,
+        treatment={"California": 1988},
         covariates=["retprice"],
     )
 
@@ -114,8 +113,7 @@ def test_that_plot_works_if_fit_has_not_been_run(sample_data):
         unit_col="state",
         time_col="year",
         value_col="cigsale",
-        treated_unit="California",
-        experiment_date=1988,
+        treatment={"California": 1988},
         covariates=["retprice"],
     )
 
