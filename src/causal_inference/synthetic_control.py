@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from pandas.api.types import is_datetime64_any_dtype
 from scipy.optimize import minimize
 from sklearn.base import BaseEstimator, RegressorMixin
 
@@ -70,10 +71,6 @@ def get_training_data(data, time_col, unit_col, value_col, treated_unit, experim
     x_train_donor = np.concatenate(x_train_donor)
 
     return x_train_treated, x_train_donor
-
-
-import matplotlib.pyplot as plt
-from pandas.api.types import is_datetime64_any_dtype
 
 
 def normalize_treatment(
