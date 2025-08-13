@@ -22,7 +22,7 @@ def proposition_99_study_test(sample_data):
     """
     synth = sc.SyntheticControl(
         data=sample_data,
-        unit_cols="state",
+        unit_col="state",
         time_col="year",
         value_col="cigsale",
         treated_unit="California",
@@ -111,7 +111,7 @@ def test_that_plot_works_if_fit_has_not_been_run(sample_data):
     """
     synth = sc.SyntheticControl(
         data=sample_data,
-        unit_cols="state",
+        unit_col="state",
         time_col="year",
         value_col="cigsale",
         treated_unit="California",
