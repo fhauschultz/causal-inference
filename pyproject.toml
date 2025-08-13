@@ -16,10 +16,6 @@ build-backend = "setuptools.build_meta"
 name = "causal-inference"
 version = "0.1.0"
 requires-python = ">=3.10"
-
-[tool.setuptools.packages.find]
-where = ["src"]
-
 dependencies = [
   "numpy>=2.3.2",
   "pandas>=2.3.1",
@@ -29,3 +25,7 @@ dependencies = [
   "seaborn>=0.14.0",      # adjust when actual version is known
   "scikit-learn>=1.7.1"
 ]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
