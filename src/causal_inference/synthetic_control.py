@@ -83,6 +83,7 @@ def normalize_treatment(
     Return a Series mapping *treated* units -> adoption time,
     in the same dtype/format as df[time_col].
     Units that are never treated are omitted from the index.
+    If `treatment` is a column name, it should be a binary indicator (1/True for treated).
     """
 
     # Coercion helper
@@ -93,17 +94,12 @@ def normalize_treatment(
             return pd.to_numeric(values, errors="coerce")
 
     if isinstance(treatment, str):
-        # One adoption time per unit
-        nunq = df.groupby(unit_col)[treatment].nunique(dropna=True)
-        if (nunq > 1).any():
-            bad_unit = nunq[nunq > 1].index[0]
-            raise ValueError(f"Multiple treatment times for unit {bad_unit} in column {treatment}.")
-
-        s = df[[unit_col, treatment]].drop_duplicates(subset=[unit_col]).set_index(unit_col)[treatment]
-        s.index = s.index.astype(str)
-        s = coerce(s)
-        # Drop never-treated
-        return s.dropna()
+        # Find first treated period for each unit
+        treated_rows = df[df[treatment].astype(bool)]
+        first_treat = treated_rows.groupby(unit_col)[time_col].min()
+        first_treat.index = first_treat.index.astype(str)
+        first_treat = coerce(first_treat)
+        return first_treat.dropna()
 
     if isinstance(treatment, dict):
         s = pd.Series({str(k): v for k, v in treatment.items()})
