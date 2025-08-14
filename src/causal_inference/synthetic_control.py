@@ -5,6 +5,7 @@ import seaborn as sns
 from pandas.api.types import is_datetime64_any_dtype
 from scipy.optimize import minimize
 from sklearn.base import BaseEstimator, RegressorMixin
+from utils import BaseCausalInference
 
 # Set the style for matplotlib
 plt.style.use("https://github.com/dhaitz/matplotlib-stylesheets/raw/master/pitayasmoothie-light.mplstyle")
@@ -218,7 +219,7 @@ def prune_units_for_se_computation(placebo_effects, experiment_date, tolerance_p
     return placebo_effects[good_fit_units]
 
 
-class SyntheticControl:
+class SyntheticControl(BaseCausalInference):
     def __init__(
         self,
         data,  # tidy panel
