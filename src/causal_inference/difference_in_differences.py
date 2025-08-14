@@ -6,10 +6,6 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.stats import t
 
-class BaseCausalInference:
-    def __init__():
-        
-
 
 class BaseDifferenceInDifferences:
     def __init__(self, data, unit_cols, time_col, treatment_col, value_vars, experiment_start_date, experiment_end_date=None, covariates=None, confidence_level=0.1, cov_type="HC3", sklearn_model=None):
