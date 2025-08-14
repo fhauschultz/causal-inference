@@ -434,13 +434,13 @@ class SyntheticControl:
         plt.legend()
         plt.show()
 
-    def plot(self):
+    def plot(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
         """
         Plot the treated unit and synthetic control.
 
         """
         if self.synthetic_control is None:
-            self.fit()
+            self.fit(calculate_se=calculate_se, significance_level=significance_level, prune_data_for_se_computation=prune_data_for_se_computation)
         impact = self.results
 
         plt.figure(figsize=(10, 6))
