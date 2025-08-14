@@ -245,6 +245,7 @@ class SyntheticControl:
         self.se = None
         self.model = model if model is not None else ClassicModelFitter()
         self.results = None
+        self.sc_fitted = False
 
     def _fit_model(self, treated_unit, experiment_date, training_end_date=None):
         """
@@ -376,6 +377,7 @@ class SyntheticControl:
             results[treated_unit] = self._get_results(treated_unit)
 
         self.results = self.aggregate_results(results)
+        self.sc_fitted = True
 
     def aggregate_results(self, results):
         """
@@ -438,7 +440,7 @@ class SyntheticControl:
         Plot the treated unit and synthetic control.
 
         """
-        if not self.results:
+        if not self.sc_fitted:
             self.fit(calculate_se=calculate_se, significance_level=significance_level, prune_data_for_se_computation=prune_data_for_se_computation)
         impact = self.results
 
@@ -462,7 +464,7 @@ class SyntheticControl:
         """
         Plot the effect of the treatment.
         """
-        if not self.results:
+        if not self.sc_fitted:
             print("Synthetic control has not been computed. Please run the fit method first.")
             return
         impact = self.results
