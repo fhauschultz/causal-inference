@@ -62,11 +62,11 @@ def add_days_since_treatment_start(data, time_col):
     start_date_is_int = check_date_format_consistency(data, time_col)
 
     if start_date_is_int:
-        data["days_since_treatment_start"] = np.max(data[time_col] - data["treatment_start"], 0).fillna(0).astype(int)
+        data["days_since_treatment_start"] = np.max(data[time_col] - data["treatment_start"], 0).astype(int)
     else:
         start_date = pd.to_datetime(data["treatment_start"])
         data["days_since_treatment_start"] = np.max((pd.to_datetime(data[time_col]) - start_date).dt.days, 0).fillna(0).astype(int)
-
+    data["days_since_treatment_start"] = data["days_since_treatment_start"].fillna(0)
     return data
 
 
