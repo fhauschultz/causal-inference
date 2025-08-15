@@ -44,7 +44,7 @@ def generate_test_data(seed=42):
     # Expand data to have multiple rows per individual (one per time period)
     data = pd.DataFrame({"id": np.repeat(ids, periods), "time": time, "treatment": np.repeat(treatment, periods)})
 
-    data["treated"] = data["treatmnet"] * data["time"].apply(lambda x: 1 if x >= treatment_start else 0)
+    data["treated"] = data["treatment"] * data["time"].apply(lambda x: 1 if x >= treatment_start else 0)
 
     # Baseline outcome
     baseline = np.random.normal(10, 2, n)
