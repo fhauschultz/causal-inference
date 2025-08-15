@@ -47,8 +47,9 @@ def normalize_treatment(
 
 def check_date_format_consistency(data, time_col):
     """Ensure all date-related inputs are either all integers or all datetime-like values."""
-    time_col_is_int = pd.api.types.is_integer_dtype(data[time_col])
-    experiment_start_date_is_int = isinstance(data["treatment_start"], int)
+    # Use pandas nullable integer type check
+    time_col_is_int = pd.api.types.is_integer_dtype(data[time_col]) or pd.api.types.is_dtype_equal(data[time_col].dtype, "Int64")
+    experiment_start_date_is_int = pd.api.types.is_integer_dtype(data["treatment_start"]) or pd.api.types.is_dtype_equal(data["treatment_start"].dtype, "Int64")
 
     if not ((time_col_is_int and experiment_start_date_is_int) or (not time_col_is_int and not experiment_start_date_is_int)):
         raise ValueError("Mismatch in date formats: Ensure `time_col`, `experiment_start_date`, and `experiment_end_date` are either all integers or all datetime values.")
