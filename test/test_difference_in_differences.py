@@ -9,7 +9,7 @@ def test_estimates():
     # generate data
     test_data, true_effect_size = generate_test_data()
     # fit model
-    did_model = EventStudy(test_data, ["id"], "time", "y", "treatment").fit(significance_level=0.1)
+    did_model = EventStudy(test_data, "id", "time", "y", "treatment").fit(significance_level=0.1)
     treatment_effect = did_model.model_effects["y"]["treatment_effect"].values
     assert np.all(np.isclose(true_effect_size["effect"].values, treatment_effect, atol=0.1)), "Treatment effect estimates do not match"
 
@@ -17,7 +17,7 @@ def test_estimates():
 def test_conf_int_robust():
     test_data, _ = generate_test_data()
     # fit model
-    model = EventStudy(test_data, ["id"], "time", "y", "treatment").fit(significance_level=0.1)
+    model = EventStudy(test_data, "id", "time", "y", "treatment").fit(significance_level=0.1)
     model = model.models["y"]
     non_robust_from_new_function = conf_int_robust(model, 0.05, cov_type="nonrobust")["lower"].values
     built_in_robust = model.conf_int()[0].values
