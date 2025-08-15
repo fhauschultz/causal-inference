@@ -11,7 +11,6 @@ from causal_inference.utils import BaseCausalInference
 
 class EventStudy(BaseCausalInference):
     def fit(self, significance_level=0.1):
-        self.data = self.data.join(self.treatment, on=self.unit_cols, how="left")
         self.models = {}
         self.model_effects = {}
         self.significance_level = significance_level
