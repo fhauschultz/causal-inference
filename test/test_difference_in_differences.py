@@ -7,21 +7,17 @@ from causal_inference.difference_in_differences import conf_int_robust
 
 def test_estimates():
     # generate data
-    experiment_start_date = 10
-    experiment_end_date = 15
     test_data, true_effect_size = generate_test_data()
     # fit model
-    did_model = EventStudy(test_data, ["id"], "time", "treatment", ["y"], experiment_start_date=experiment_start_date, experiment_end_date=experiment_end_date, confidence_level=0.1).fit()
+    did_model = EventStudy(test_data, ["id"], "time", "treatment", ["y"], confidence_level=0.1).fit()
     treatment_effect = did_model.model_effects["y"]["treatment_effect"].values
     assert np.all(np.isclose(true_effect_size["effect"].values, treatment_effect, atol=0.1)), "Treatment effect estimates do not match"
 
 
 def test_conf_int_robust():
-    experiment_start_date = 10
-    experiment_end_date = 15
     test_data, _ = generate_test_data()
     # fit model
-    model = EventStudy(test_data, ["id"], "time", "treatment", ["y"], experiment_start_date=experiment_start_date, experiment_end_date=experiment_end_date, confidence_level=0.1).fit()
+    model = EventStudy(test_data, ["id"], "time", "treatment", ["y"], confidence_level=0.1).fit()
     model = model.models["y"]
     non_robust_from_new_function = conf_int_robust(model, 0.05, cov_type="nonrobust")["lower"].values
     built_in_robust = model.conf_int()[0].values
@@ -47,6 +43,8 @@ def generate_test_data(seed=42):
 
     # Expand data to have multiple rows per individual (one per time period)
     data = pd.DataFrame({"id": np.repeat(ids, periods), "time": time, "treatment": np.repeat(treatment, periods)})
+
+    data["treated"] = data["treatmnet"] * data["time"].apply(lambda x: 1 if x >= treatment_start else 0)
 
     # Baseline outcome
     baseline = np.random.normal(10, 2, n)
