@@ -143,7 +143,7 @@ def test_event_study_class():
 
 def test_bdid_class():
     df = generate_test_data_2()
-    bdid = BinaryDiD(df, ["treated"], "time", "treated", ["outcome"], 0, 5, confidence_level=0.1)
+    bdid = BinaryDiD(df, "treated", "time", "outcome", "treated", confidence_level=0.1)
 
     bdid.fit()
     print(bdid.model_effects["outcome"].loc[5]["treatment_effect_cumulative"])
