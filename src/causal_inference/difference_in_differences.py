@@ -140,7 +140,7 @@ def bdid_did_data(data, unit_col, time_col, treatment_col, covariates=None, outc
 def event_study_data(data, time_col, treatment_col, outcome_col, covariates=None):
     # Create time dummies and identify post-treatment periods
     time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
-    post_treatment_interaction = time_dummies.mul(data[treatment_col], axis=0)
+    post_treatment_interaction = data[treatment_col]
 
     # Rename post_treatment_interaction columns
     post_treatment_interaction.columns = [col.replace("time", "time_treatment_effect") for col in post_treatment_interaction.columns]
