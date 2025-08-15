@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from pandas.api.types import is_datetime64_any_dtype
 from scipy.optimize import minimize
 from sklearn.base import BaseEstimator, RegressorMixin
 
@@ -73,42 +72,6 @@ def get_training_data(data, time_col, unit_col, value_col, treated_unit, experim
     x_train_donor = np.concatenate(x_train_donor)
 
     return x_train_treated, x_train_donor
-
-
-def normalize_treatment(
-    df: pd.DataFrame,
-    unit_col: str,
-    time_col: str,
-    treatment,  # str column OR dict {unit_id: treat_time}
-) -> pd.Series:
-    """
-    Return a Series mapping *treated* units -> adoption time,
-    in the same dtype/format as df[time_col].
-    Units that are never treated are omitted from the index.
-    If `treatment` is a column name, it should be a binary indicator (1/True for treated).
-    """
-
-    # Coercion helper
-    def coerce(values):
-        if is_datetime64_any_dtype(df[time_col].dtype):
-            return pd.to_datetime(values, errors="coerce")
-        else:
-            return pd.to_numeric(values, errors="coerce")
-
-    if isinstance(treatment, str):
-        # Find first treated period for each unit
-        treated_rows = df[df[treatment].astype(bool)]
-        first_treat = treated_rows.groupby(unit_col)[time_col].min()
-        first_treat.index = first_treat.index.astype(str)
-        first_treat = coerce(first_treat)
-        return first_treat.dropna()
-
-    if isinstance(treatment, dict):
-        s = pd.Series({str(k): v for k, v in treatment.items()})
-        s = coerce(s)
-        return s.dropna()
-
-    raise TypeError("`treatment` must be a column name (str) or a dict {unit_id: treat_time}.")
 
 
 def prepare_data(data, time_col, unit_col, value_col, treated_unit, experiment_date, training_end_date=None, covariates=None):
@@ -221,34 +184,6 @@ def prune_units_for_se_computation(placebo_effects, experiment_date, tolerance_p
 
 
 class SyntheticControl(BaseCausalInference):
-    def __init__(
-        self,
-        data,  # tidy panel
-        unit_col,  # str | list[str]
-        time_col,  # str
-        value_col,  # str
-        treatment,  # column name | dict | Series | list[(unit, time)] | (unit, time)
-        *,
-        training_end_date=None,
-        covariates=None,
-        model=None,
-    ):
-        self.covariates = covariates
-        self.time_col = time_col
-        self.unit_col = unit_col
-        self.value_col = value_col
-        self.treatment = normalize_treatment(data, unit_col=unit_col, time_col=time_col, treatment=treatment)
-        self.donors = set(data[unit_col].unique()) - set(self.treatment.index)
-        self.cols = [unit_col, time_col, value_col] + (covariates or [])
-
-        self.data = data[self.cols].copy(deep=False)
-        self.training_end_date = training_end_date
-        self.se_computed = False
-        self.se = None
-        self.model = model if model is not None else ClassicModelFitter()
-        self.results = None
-        self.model_fitted = False
-
     def _fit_model(self, treated_unit, experiment_date, training_end_date=None):
         """
         Fit the model to the data.
@@ -362,6 +297,7 @@ class SyntheticControl(BaseCausalInference):
         return self.se
 
     def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
+        self.model = self.model if self.model is not None else ClassicModelFitter()
         results = {}
         self.synthetic_controls = {}
         self.synthetic_weights = {}
