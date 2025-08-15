@@ -15,7 +15,7 @@ class EventStudy(BaseCausalInference):
         self.model_effects = {}
         self.significance_level = significance_level
         for var in self.value_col:
-            x, y = event_study_data(self.data, "days_since_experiment_start", self.treatment_col, var, self.covariates)
+            x, y = event_study_data(self.data, "days_since_experiment_start", self.treatment, var, self.covariates)
             if not self.sklearn_model:
                 self.model = sm.OLS(y, x).fit()
                 table = extract_all_coefficients_statsmodels(self.model, cov_type=self.cov_type, alpha=significance_level)
