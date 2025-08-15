@@ -14,6 +14,7 @@ class EventStudy(BaseCausalInference):
         self.data = self.data.join(self.treatment, on=self.unit_cols, how="left")
         self.models = {}
         self.model_effects = {}
+        self.significance_level = significance_level
         for var in self.value_vars:
             x, y = event_study_data(self.data, "days_since_experiment_start", self.treatment_col, var, self.covariates)
             if not self.sklearn_model:
@@ -31,7 +32,7 @@ class EventStudy(BaseCausalInference):
         variables = _set_variables(variables, self.value_vars)
         fig, ax = _make_fig(variables)
         fig.suptitle("Treatment and Control Development", fontsize=14)
-        confidence_interval_size = int(np.round((1 - self.confidence_level) * 100, 0))
+        confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
         for i, variable in enumerate(variables):
             plotdata = self.model_effects[variable]
             ax[i].axvline(0, label="Experiment Start", c="black", lw=linewidth)
@@ -52,7 +53,7 @@ class EventStudy(BaseCausalInference):
     def plot_treatment_effects(self, variables=None, linewidth=2.5):
         variables = _set_variables(variables, self.value_vars)
         fig, ax = _make_fig(variables)
-        confidence_interval_size = int(np.round((1 - self.confidence_level) * 100, 0))
+        confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
         fig.suptitle("Estimated Period-Specific Treatment Effects", fontsize=14)
         for i, variable in enumerate(variables):
             plotdata = self.model_effects[variable]
@@ -71,9 +72,10 @@ class EventStudy(BaseCausalInference):
 
 
 class BinaryDiD(BaseCausalInference):
-    def fit(self):
+    def fit(self, significance_level=0.1):
         self.models = {}
         self.model_effects = {}
+        self.significance_level = significance_level
         for var in self.value_vars:
             table, model = cumulative_treatment_effects(
                 self.data, self.unit_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type
@@ -86,7 +88,7 @@ class BinaryDiD(BaseCausalInference):
         variables = _set_variables(variables, self.value_vars)
         fig, ax = _make_fig(variables)
         fig.suptitle("Estimated Two-way Fixed Effects Treatment Effect", fontsize=14)
-        confidence_interval_size = int(np.round((1 - self.confidence_level) * 100, 0))
+        confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
         for i, variable in enumerate(variables):
             ax[i].axvline(0, label="Experiment Start", c="black", lw=linewidth)
             ax[i].axvline(self.experiment_duration_days, label="Experiment End", c="black", lw=linewidth, linestyle="--")
