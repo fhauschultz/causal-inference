@@ -14,7 +14,7 @@ class EventStudy(BaseCausalInference):
         self.models = {}
         self.model_effects = {}
         self.significance_level = significance_level
-        for var in self.value_vars:
+        for var in self.value_col:
             x, y = event_study_data(self.data, "days_since_experiment_start", self.treatment_col, var, self.covariates)
             if not self.sklearn_model:
                 self.model = sm.OLS(y, x).fit()
@@ -28,7 +28,7 @@ class EventStudy(BaseCausalInference):
         return self
 
     def plot_treatment_control(self, variables=None, linewidth=2.5):
-        variables = _set_variables(variables, self.value_vars)
+        variables = _set_variables(variables, self.value_col)
         fig, ax = _make_fig(variables)
         fig.suptitle("Treatment and Control Development", fontsize=14)
         confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
@@ -50,7 +50,7 @@ class EventStudy(BaseCausalInference):
         return fig
 
     def plot_treatment_effects(self, variables=None, linewidth=2.5):
-        variables = _set_variables(variables, self.value_vars)
+        variables = _set_variables(variables, self.value_col)
         fig, ax = _make_fig(variables)
         confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
         fig.suptitle("Estimated Period-Specific Treatment Effects", fontsize=14)
@@ -75,7 +75,7 @@ class BinaryDiD(BaseCausalInference):
         self.models = {}
         self.model_effects = {}
         self.significance_level = significance_level
-        for var in self.value_vars:
+        for var in self.value_col:
             table, model = cumulative_treatment_effects(
                 self.data, self.unit_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type
             )
@@ -84,7 +84,7 @@ class BinaryDiD(BaseCausalInference):
         return self
 
     def plot_treatment_effect(self, variables=None, linewidth=2.5):
-        variables = _set_variables(variables, self.value_vars)
+        variables = _set_variables(variables, self.value_col)
         fig, ax = _make_fig(variables)
         fig.suptitle("Estimated Two-way Fixed Effects Treatment Effect", fontsize=14)
         confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
@@ -101,11 +101,11 @@ class BinaryDiD(BaseCausalInference):
         return fig
 
 
-def _set_variables(variables, value_vars):
+def _set_variables(variables, value_col):
     if isinstance(variables, str):
         variables = [variables]
     if not variables:
-        variables = value_vars
+        variables = value_col
     return variables
 
 
