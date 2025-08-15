@@ -78,7 +78,6 @@ class BaseCausalInference:
         training_end_date=None,
         covariates=None,
         model=None,
-        confidence_level=None,
     ):
         self.covariates = covariates
         self.time_col = time_col

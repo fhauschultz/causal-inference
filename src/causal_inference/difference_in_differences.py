@@ -10,7 +10,7 @@ from causal_inference.utils import BaseCausalInference
 
 
 class EventStudy(BaseCausalInference):
-    def fit(self):
+    def fit(self, significance_level=0.1):
         self.data = self.data.join(self.treatment, on=self.unit_cols, how="left")
         self.models = {}
         self.model_effects = {}
@@ -18,7 +18,7 @@ class EventStudy(BaseCausalInference):
             x, y = event_study_data(self.data, "days_since_experiment_start", self.treatment_col, var, self.covariates)
             if not self.sklearn_model:
                 self.model = sm.OLS(y, x).fit()
-                table = extract_all_coefficients_statsmodels(self.model, cov_type=self.cov_type, alpha=self.confidence_level)
+                table = extract_all_coefficients_statsmodels(self.model, cov_type=self.cov_type, alpha=significance_level)
             else:
                 self.model = self.sklearn_model.fit(x, y)
                 table = extract_coefficients_sklearn(self.model)
@@ -76,7 +76,7 @@ class BinaryDiD(BaseCausalInference):
         self.model_effects = {}
         for var in self.value_vars:
             table, model = cumulative_treatment_effects(
-                self.data, self.unit_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=self.confidence_level, cov_type=self.cov_type
+                self.data, self.unit_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type
             )
             self.models[var] = model
             self.model_effects[var] = table

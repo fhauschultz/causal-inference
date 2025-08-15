@@ -133,17 +133,17 @@ def estimate_did(df, pre_period=-1, post_period=1, outcome_col="outcome"):
 
 def test_event_study_class():
     df = generate_test_data_2()
-    experiment_eval = EventStudy(df, ["unit"], "time", "outcome", "treated", confidence_level=0.1)
-    experiment_eval.fit()
+    experiment_eval = EventStudy(df, ["unit"], "time", "outcome", "treated")
+    experiment_eval.fit(significance_level=0.1)
 
     assert np.all(np.isclose(experiment_eval.model_effects["outcome"]["treatment_effect"].values, estimate_did(df)[1]["diff"].values))
 
 
 def test_bdid_class():
     df = generate_test_data_2()
-    bdid = BinaryDiD(df, "treated", "time", "outcome", "treated", confidence_level=0.1)
+    bdid = BinaryDiD(df, "treated", "time", "outcome", "treated")
 
-    bdid.fit()
+    bdid.fit(significance_level=0.1)
     print(bdid.model_effects["outcome"].loc[5]["treatment_effect_cumulative"])
     print(estimate_did(df)[0])
     assert np.isclose(bdid.model_effects["outcome"].loc[5]["treatment_effect_cumulative"], estimate_did(df)[0])
