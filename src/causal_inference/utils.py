@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
@@ -61,10 +62,10 @@ def add_days_since_treatment_start(data, time_col):
     start_date_is_int = check_date_format_consistency(data, time_col)
 
     if start_date_is_int:
-        data["days_since_treatment_start"] = data[time_col] - data["treatment_start"]
+        data["days_since_treatment_start"] = np.max(data[time_col] - data["treatment_start"], 0).fillna(0).astype(int)
     else:
         start_date = pd.to_datetime(data["treatment_start"])
-        data["days_since_treatment_start"] = (pd.to_datetime(data[time_col]) - start_date).dt.days
+        data["days_since_treatment_start"] = np.max((pd.to_datetime(data[time_col]) - start_date).dt.days, 0).fillna(0).astype(int)
 
     return data
 
