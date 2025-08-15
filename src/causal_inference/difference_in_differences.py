@@ -76,9 +76,7 @@ class BinaryDiD(BaseCausalInference):
         self.model_effects = {}
         self.significance_level = significance_level
         for var in self.value_col:
-            table, model = cumulative_treatment_effects(
-                self.data, self.unit_cols, "days_since_experiment_start", self.treatment_col, treatment_start_date=0, treatment_end_date=self.experiment_duration_days, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type
-            )
+            table, model = cumulative_treatment_effects(self.data, self.unit_cols, "days_since_experiment_start", self.treatment, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type)
             self.models[var] = model
             self.model_effects[var] = table
         return self
@@ -131,10 +129,10 @@ def package_data_fixed_effects(data, treatment_col, time_col, outcome_col=None, 
     return x, y
 
 
-def bdid_did_data(data, unit_col, time_col, treatment_col, treatment_start_date, treatment_end_date, covariates=None, outcome_col=None):
+def bdid_did_data(data, unit_col, time_col, treatment_col, covariates=None, outcome_col=None):
     y = None
     # Create time dummies and identify post-treatment periods
-    data["post_treatment_interaction"] = (data[time_col] >= treatment_start_date).astype(int) * data[treatment_col]
+    data["post_treatment_interaction"] = data[treatment_col]
     x, y = package_data_fixed_effects(data, treatment_col, time_col, outcome_col, covariates)
     return x, y
 
@@ -157,13 +155,13 @@ def event_study_data(data, time_col, treatment_col, outcome_col, covariates=None
     return x, y
 
 
-def cumulative_treatment_effects(data, unit_col, time_col, treatment_col, treatment_start_date, treatment_end_date, covariates=None, outcome_col=None, alpha=0.05, cov_type="nonrobust"):
+def cumulative_treatment_effects(data, unit_col, time_col, treatment_col, covariates=None, outcome_col=None, alpha=0.05, cov_type="nonrobust"):
     cumulative_effects = []
     max_period = data.days_since_experiment_start.max() + 1
     print("Estimating cumulative treatment effects for periods 1 to", max_period, "...")
     for period in np.arange(1, max_period):
         estimation_data = data[data.days_since_experiment_start <= period].copy(deep=False)
-        x, y = bdid_did_data(estimation_data, unit_col, time_col, treatment_col, treatment_start_date, treatment_end_date, outcome_col=outcome_col, covariates=covariates)
+        x, y = bdid_did_data(estimation_data, unit_col, time_col, treatment_col, outcome_col=outcome_col, covariates=covariates)
         model = sm.OLS(y, x).fit()
         treatment_effect_data = extract_all_coefficients_statsmodels(model, alpha=alpha, cov_type=cov_type).dropna()[["treatment_effect", "treatment_effect_lower_bound", "treatment_effect_upper_bound"]]
         treatment_effect_data["days_since_experiment_start"] = period
