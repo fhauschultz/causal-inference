@@ -50,7 +50,7 @@ def check_date_format_consistency(data, time_col):
     # Use pandas nullable integer type check
     time_col_is_int = pd.api.types.is_integer_dtype(data[time_col].dropna())
     experiment_start_date_is_int = pd.api.types.is_integer_dtype(data["treatment_start"].dropna())
-    print(experiment_start_date_is_int)
+    print(data["treatment_start"].dropna())
 
     if not ((time_col_is_int and experiment_start_date_is_int) or (not time_col_is_int and not experiment_start_date_is_int)):
         raise ValueError("Mismatch in date formats: Ensure `time_col`, `experiment_start_date`, and `experiment_end_date` are either all integers or all datetime values.")
