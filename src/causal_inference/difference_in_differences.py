@@ -8,17 +8,6 @@ from scipy.stats import t
 
 from causal_inference.utils import BaseCausalInference
 
-        self,
-        data,  # tidy panel
-        unit_col,  # str | list[str]
-        time_col,  # str
-        value_col,  # str
-        treatment,  # column name | dict | Series | list[(unit, time)] | (unit, time)
-        *,
-        training_end_date=None,
-        covariates=None,
-        model=None,
-
 
 class BaseDifferenceInDifferences(BaseCausalInference):
     def __init__(self, data, unit_cols, time_col, value_col, treatment_col, experiment_start_date, experiment_end_date=None, covariates=None, confidence_level=0.1, cov_type="HC3", sklearn_model=None):
@@ -294,6 +283,3 @@ def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
 
 def extract_numbers(index_values):
     return [int(re.search(r"[-\d]+$", item).group()) for item in index_values]
-
-
-
