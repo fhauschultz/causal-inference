@@ -9,36 +9,7 @@ from scipy.stats import t
 from causal_inference.utils import BaseCausalInference
 
 
-class BaseDifferenceInDifferences(BaseCausalInference):
-    def __init__(self, data, unit_cols, time_col, value_col, treatment_col, experiment_start_date, experiment_end_date=None, covariates=None, confidence_level=0.1, cov_type="HC3", sklearn_model=None):
-        self.data = data
-        self.unit_cols = unit_cols
-        self.time_col = time_col
-        self.treatment_col = treatment_col
-        self.value_vars = value_col
-        self.confidence_level = confidence_level
-        self.cov_type = cov_type
-        self.sklearn_model = sklearn_model
-        self.covariates = covariates
-
-        if self.sklearn_model is not None and hasattr(self.sklearn_model, "fit_intercept"):
-            self.sklearn_model.fit_intercept = False
-
-        start_date_is_int = check_date_format_consistency(data, time_col, experiment_start_date, experiment_end_date)
-
-        if start_date_is_int:
-            self.data["days_since_experiment_start"] = self.data[time_col] - experiment_start_date
-            self.experiment_duration_days = experiment_end_date - experiment_start_date if experiment_end_date else None
-        else:
-            start_date = pd.to_datetime(experiment_start_date)
-            end_date = pd.to_datetime(experiment_end_date) if experiment_end_date else self.data[time_col].max()
-            self.data["days_since_experiment_start"] = (pd.to_datetime(self.data[time_col]) - start_date).dt.days
-            self.experiment_duration_days = (end_date - start_date).days if end_date else None
-
-        plt.style.use("classic")
-
-
-class EventStudy(BaseDifferenceInDifferences):
+class EventStudy(BaseCausalInference):
     def fit(self):
         self.data = self.data.join(self.treatment, on=self.unit_cols, how="left")
         self.models = {}
@@ -99,7 +70,7 @@ class EventStudy(BaseDifferenceInDifferences):
         return fig
 
 
-class BinaryDiD(BaseDifferenceInDifferences):
+class BinaryDiD(BaseCausalInference):
     def fit(self):
         self.models = {}
         self.model_effects = {}
