@@ -134,7 +134,7 @@ def package_data_fixed_effects(data, treatment_col, time_col, outcome_col=None, 
 def bdid_did_data(data, unit_col, time_col, treatment_col, treatment_start_date, treatment_end_date, covariates=None, outcome_col=None):
     y = None
     # Create time dummies and identify post-treatment periods
-    data["post_treatment_interaction"] = (data[time_col] <= treatment_end_date).astype(int) * (data[time_col] >= treatment_start_date).astype(int) * data[treatment_col]
+    data["post_treatment_interaction"] = (data[time_col] >= treatment_start_date).astype(int) * data[treatment_col]
     x, y = package_data_fixed_effects(data, treatment_col, time_col, outcome_col, covariates)
     return x, y
 

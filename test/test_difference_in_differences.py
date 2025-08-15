@@ -73,6 +73,7 @@ def generate_test_data_2():
     n_post = 5
     treatment_effect = 3.0
     random_seed = 42
+    treatment_start = 0
 
     np.random.seed(random_seed)
 
@@ -85,7 +86,7 @@ def generate_test_data_2():
 
     # Assign treatment randomly to half the units
     treated_units = np.random.choice(units, size=n_units // 2, replace=False)
-    df["treated"] = df["unit"].isin(treated_units).astype(int)
+    df["treated"] = df["unit"].isin(treated_units).astype(int) * df["time"].apply(lambda x: 1 if x >= treatment_start else 0)
 
     # Calculate baseline trend (can customize this)
     df["baseline"] = 10 + df["unit"] * 0.1 + df["time"] * 0.2
