@@ -57,14 +57,14 @@ def check_date_format_consistency(data, time_col):
     return experiment_start_date_is_int  # Return format flag for downstream logic
 
 
-def add_days_since_experiment_start(data, time_col):
+def add_days_since_treatment_start(data, time_col):
     start_date_is_int = check_date_format_consistency(data, time_col)
 
     if start_date_is_int:
-        data["days_since_experiment_start"] = data[time_col] - data["treatment_start"]
+        data["days_since_treatment_start"] = data[time_col] - data["treatment_start"]
     else:
         start_date = pd.to_datetime(data["treatment_start"])
-        data["days_since_experiment_start"] = (pd.to_datetime(data[time_col]) - start_date).dt.days
+        data["days_since_treatment_start"] = (pd.to_datetime(data[time_col]) - start_date).dt.days
 
     return data
 
@@ -89,7 +89,7 @@ class BaseCausalInference:
         self.treatment = normalize_treatment(data, unit_col=unit_col, time_col=time_col, treatment=treatment)
         self.donors = set(data[unit_col].unique()) - set(self.treatment[unit_col])
         data = data.merge(self.treatment, on=unit_col, how="left")
-        self.data = add_days_since_experiment_start(data, time_col=self.time_col)
+        self.data = add_days_since_treatment_start(data, time_col=self.time_col)
         self.cols = [unit_col, time_col, value_col, "days_since_treatment_start"] + (covariates or [])
         self.data = self.data[self.cols].copy(deep=False)
 
