@@ -100,8 +100,8 @@ class BaseCausalInference:
         self.model_fitted = False
         self.model = model
 
-        if self.sklearn_model is not None and hasattr(self.sklearn_model, "fit_intercept"):
-            self.sklearn_model.fit_intercept = False
+        if self.model is not None and hasattr(self.model, "fit_intercept"):
+            self.model.fit_intercept = False
 
         plt.style.use("classic")
 
