@@ -88,7 +88,7 @@ class BaseCausalInference:
         self.cols = [unit_col, time_col, value_col] + (covariates or [])
 
         self.data = data[self.cols].copy(deep=False)
-        self.data = self.data.transform(add_days_since_experiment_start, time_col=self.time_col)
+        self.data = add_days_since_experiment_start(self.data, time_col=self.time_col)
         self.training_end_date = training_end_date
         self.se_computed = False
         self.se = None
