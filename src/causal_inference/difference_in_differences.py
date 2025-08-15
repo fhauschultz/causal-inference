@@ -15,7 +15,7 @@ class EventStudy(BaseCausalInference):
         self.model_effects = {}
         self.significance_level = significance_level
         for var in self.value_col:
-            x, y = event_study_data(self.data, "days_since_experiment_start", self.treatment, var, self.covariates)
+            x, y = event_study_data(self.data, "days_since_treatment_start", self.treatment, var, self.covariates)
             if not self.sklearn_model:
                 self.model = sm.OLS(y, x).fit()
                 table = extract_all_coefficients_statsmodels(self.model, cov_type=self.cov_type, alpha=significance_level)
@@ -76,7 +76,7 @@ class BinaryDiD(BaseCausalInference):
         self.model_effects = {}
         self.significance_level = significance_level
         for var in self.value_col:
-            table, model = cumulative_treatment_effects(self.data, self.unit_cols, "days_since_experiment_start", self.treatment, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type)
+            table, model = cumulative_treatment_effects(self.data, self.unit_cols, "days_since_treatment_start", self.treatment, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type)
             self.models[var] = model
             self.model_effects[var] = table
         return self
@@ -157,17 +157,17 @@ def event_study_data(data, time_col, treatment_col, outcome_col, covariates=None
 
 def cumulative_treatment_effects(data, unit_col, time_col, treatment_col, covariates=None, outcome_col=None, alpha=0.05, cov_type="nonrobust"):
     cumulative_effects = []
-    max_period = data.days_since_experiment_start.max() + 1
+    max_period = data.days_since_treatment_start.max() + 1
     print("Estimating cumulative treatment effects for periods 1 to", max_period, "...")
     for period in np.arange(1, max_period):
-        estimation_data = data[data.days_since_experiment_start <= period].copy(deep=False)
+        estimation_data = data[data.days_since_treatment_start <= period].copy(deep=False)
         x, y = bdid_did_data(estimation_data, unit_col, time_col, treatment_col, outcome_col=outcome_col, covariates=covariates)
         model = sm.OLS(y, x).fit()
         treatment_effect_data = extract_all_coefficients_statsmodels(model, alpha=alpha, cov_type=cov_type).dropna()[["treatment_effect", "treatment_effect_lower_bound", "treatment_effect_upper_bound"]]
-        treatment_effect_data["days_since_experiment_start"] = period
+        treatment_effect_data["days_since_treatment_start"] = period
         cumulative_effects.append(treatment_effect_data)
 
-    cumulative_effects = pd.concat(cumulative_effects).set_index("days_since_experiment_start")
+    cumulative_effects = pd.concat(cumulative_effects).set_index("days_since_treatment_start")
     cumulative_effects = cumulative_effects.rename(columns={"treatment_effect": "treatment_effect_cumulative", "treatment_effect_lower_bound": "treatment_effect_cumulative_lower_bound", "treatment_effect_upper_bound": "treatment_effect_cumulative_upper_bound"})
     return cumulative_effects, model
 
