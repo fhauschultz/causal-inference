@@ -301,14 +301,14 @@ class SyntheticControl(BaseCausalInference):
         results = {}
         self.synthetic_controls = {}
         self.synthetic_weights = {}
-        for treated_unit in self.treatment.index:
-            experiment_date = self.treatment[treated_unit]
+        for treated_unit in self.treatment[self.unit_col]:
+            experiment_date = self.treatment[self.treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
             training_end_date = self.training_end_date if self.training_end_date else experiment_date
 
             # Prepare data and fit the model
             self.synthetic_controls[treated_unit], self.synthetic_weights[treated_unit] = self._fit_model(treated_unit, experiment_date, training_end_date)
 
-            if calculate_se and self.treatment.index.size == 1:
+            if calculate_se and self.treatment[self.unit_col].size == 1:
                 self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
 
             # Store results

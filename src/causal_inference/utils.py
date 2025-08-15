@@ -72,7 +72,7 @@ class BaseCausalInference:
         self.unit_col = unit_col
         self.value_col = value_col
         self.treatment = normalize_treatment(data, unit_col=unit_col, time_col=time_col, treatment=treatment)
-        self.donors = set(data[unit_col].unique()) - set(self.treatment.index)
+        self.donors = set(data[unit_col].unique()) - set(self.treatment[unit_col])
         self.cols = [unit_col, time_col, value_col] + (covariates or [])
 
         self.data = data[self.cols].copy(deep=False)
