@@ -135,7 +135,7 @@ def estimate_did(df, pre_period=-1, post_period=1, outcome_col="outcome"):
 
 def test_event_study_class():
     df = generate_test_data_2()
-    experiment_eval = EventStudy(df, ["unit"], "time", "treated", ["outcome"], 0, 5, confidence_level=0.1)
+    experiment_eval = EventStudy(df, ["unit"], "time", "outcome", "treated", confidence_level=0.1)
     experiment_eval.fit()
 
     assert np.all(np.isclose(experiment_eval.model_effects["outcome"]["treatment_effect"].values, estimate_did(df)[1]["diff"].values))
