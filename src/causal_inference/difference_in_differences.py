@@ -40,6 +40,7 @@ class BaseDifferenceInDifferences(BaseCausalInference):
 
 class EventStudy(BaseDifferenceInDifferences):
     def fit(self):
+        self.data = self.data.join(self.treatment, on=self.unit_cols, how="left")
         self.models = {}
         self.model_effects = {}
         for var in self.value_vars:
