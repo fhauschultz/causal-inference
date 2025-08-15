@@ -8,9 +8,9 @@ def normalize_treatment(
     unit_col: str,
     time_col: str,
     treatment,  # str column OR dict {unit_id: treat_time}
-) -> pd.Series:
+) -> pd.DataFrame:
     """
-    Return a Series mapping *treated* units -> adoption time,
+    Return a DataFrame mapping *treated* units -> adoption time,
     in the same dtype/format as df[time_col].
     Units that are never treated are omitted from the index.
     If `treatment` is a column name, it should be a binary indicator (1/True for treated).
@@ -27,17 +27,19 @@ def normalize_treatment(
         # Find first treated period for each unit
         treated_rows = df[df[treatment].astype(bool)]
         first_treat = treated_rows.groupby(unit_col)[time_col].min()
-        first_treat.index = first_treat.index.astype(str)
-        first_treat = coerce(first_treat)
+        # Keep the dtype of unit_col
         first_treat = first_treat.dropna().reset_index()
         first_treat.columns = [unit_col, "treatment_start"]
+        first_treat["treatment_start"] = coerce(first_treat["treatment_start"])
+        first_treat[unit_col] = first_treat[unit_col].astype(df[unit_col].dtype)
         return first_treat
 
     if isinstance(treatment, dict):
-        s = pd.Series({str(k): v for k, v in treatment.items()})
-        s = coerce(s)
+        s = pd.Series(treatment)
         s = s.dropna().reset_index()
         s.columns = [unit_col, "treatment_start"]
+        s["treatment_start"] = coerce(s["treatment_start"])
+        s[unit_col] = s[unit_col].astype(df[unit_col].dtype)
         return s
 
     raise TypeError("`treatment` must be a column name (str) or a dict {unit_id: treat_time}.")
