@@ -85,10 +85,10 @@ class BaseCausalInference:
         self.value_col = value_col
         self.treatment = normalize_treatment(data, unit_col=unit_col, time_col=time_col, treatment=treatment)
         self.donors = set(data[unit_col].unique()) - set(self.treatment[unit_col])
-        self.cols = [unit_col, time_col, value_col] + (covariates or [])
-
-        self.data = data[self.cols].copy(deep=False)
         self.data = add_days_since_experiment_start(self.data, time_col=self.time_col)
+        self.cols = [unit_col, time_col, value_col, "days_since_treatment_start"] + (covariates or [])
+        self.data = data[self.cols].copy(deep=False)
+
         self.training_end_date = training_end_date
         self.se_computed = False
         self.se = None
