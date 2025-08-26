@@ -361,8 +361,21 @@ class SyntheticControl(BaseCausalInference):
         return impact[impact.index > self.experiment_date].mean()
 
     def get_experiment_date(self):
-        experiment_date = self.treatment.iloc[0] if len(self.treatment) == 1 else 0
-        return experiment_date
+        """
+        Returns the experiment date for the treated unit(s) as a native Python type.
+        If there is only one treated unit, returns its treatment start date.
+        Otherwise, returns 0.
+        """
+        if len(self.treatment) == 1:
+            # Get the treatment start date for the single treated unit
+            experiment_date = self.treatment["treatment_start"].iloc[0]
+            # Convert numpy types to native Python types for compatibility with plotting
+            if hasattr(experiment_date, "item"):
+                experiment_date = experiment_date.item()
+            return experiment_date
+        else:
+            # Multiple treated units or no treatment info
+            return 0
 
     def plot_histogram(self):
         """
