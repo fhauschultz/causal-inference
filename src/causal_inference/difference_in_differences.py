@@ -20,8 +20,6 @@ class Staggered(BaseCausalInference):
         self.models[self.value_col] = self.model
         return self
 
-    import matplotlib.pyplot as plt
-
     def plot_effects_with_error_bands(self, time_col="time", estimate_col="estimate", ci_lower_col="ci_lower", ci_upper_col="ci_upper", title="Estimated Effect"):
         effects = self.model_effects[self.value_col]
         plt.figure(figsize=(10, 6))
