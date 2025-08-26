@@ -15,7 +15,7 @@ class EventStudy(BaseCausalInference):
         self.model_effects = {}
         self.significance_level = significance_level
         for var in self.value_col:
-            x, y = event_study_data(self.data, "days_since_treatment_start", self.treatment, var, self.covariates)
+            x, y = event_study_data(self.data, self.time_col, self.unit_col, self.treatment, var, self.covariates)
             if not self.sklearn_model:
                 self.model = sm.OLS(y, x).fit()
                 table = extract_all_coefficients_statsmodels(self.model, cov_type=self.cov_type, alpha=significance_level)
@@ -137,11 +137,11 @@ def bdid_did_data(data, unit_col, time_col, treatment_col, covariates=None, outc
     return x, y
 
 
-def event_study_data(data, time_col, treatment_col, outcome_col, covariates=None):
+def event_study_data(data, time_col, unit_col, treatment_info, outcome_col, covariates=None):
     # Create time dummies and identify post-treatment periods
     time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
-    print(data[treatment_col])
-    post_treatment_interaction = data[treatment_col]
+    data = add_periods_since_treatment_start(data, treatment_info, unit_col)
+    post_treatment_interaction = data["periods_since_treatment_start"]
 
     # Rename post_treatment_interaction columns
     post_treatment_interaction.columns = [col.replace("time", "time_treatment_effect") for col in post_treatment_interaction.columns]
@@ -154,6 +154,13 @@ def event_study_data(data, time_col, treatment_col, outcome_col, covariates=None
     if outcome_col:
         y = data[outcome_col]
     return x, y
+
+
+def add_periods_since_treatment_start(data, treatment, unit_col):
+    data = data.merge(treatment.rename("treatment_start"), on=unit_col, how="left")
+    data["periods_since_treatment_start"] = data["year"] - data["treatment_start"]
+    data["periods_since_treatment_start"] = data["periods_since_treatment_start"].fillna(0)
+    return data
 
 
 def cumulative_treatment_effects(data, unit_col, time_col, treatment_col, covariates=None, outcome_col=None, alpha=0.05, cov_type="nonrobust"):
