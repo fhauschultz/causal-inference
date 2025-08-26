@@ -87,16 +87,13 @@ class BaseCausalInference:
         self.covariates = covariates
         self.time_col = time_col
         self.unit_col = unit_col
-        if isinstance(value_col, str):
-            self.value_col = [value_col]
-        else:
-            self.value_col = value_col
+        self.value_col = value_col
         self.treatment = normalize_treatment(data, unit_col=unit_col, time_col=time_col, treatment=treatment)
 
         self.donors = set(data[unit_col].unique()) - set(self.treatment[unit_col])
         data = data.merge(self.treatment, on=unit_col, how="left")
         self.data = data
-        self.cols = [unit_col, time_col, *self.value_col, "treatment_start"] + (covariates or [])
+        self.cols = [unit_col, time_col, self.value_col, "treatment_start"] + (covariates or [])
         self.data = self.data[self.cols].copy(deep=False)
 
         print(self.data)
