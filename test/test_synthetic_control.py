@@ -159,26 +159,26 @@ def test_that_plot_works_if_fit_has_not_been_run(sample_data):
 def test_normalize_treatment_column():
     # Create a sample DataFrame
     df = pd.DataFrame({"unit": ["A", "A", "B", "B", "C", "C"], "time": [1, 2, 1, 2, 1, 2], "treated": [0, 1, 0, 0, 1, 1]})
-    result = normalize_treatment(df, unit_col="unit", time_col="time", treatment="treated")
+    result = normalize_treatment(df, unit_col="unit", time_col="time", treatment="treated").set_index("unit")
     # Only units A and C are treated, at times 2 and 1 respectively
     assert set(result.index) == {"A", "C"}
-    assert result["A"] == 2
-    assert result["C"] == 1
+    assert result.loc["A"]["treatment_start"] == 2
+    assert result.loc["C"]["treatment_start"] == 1
 
 
 def test_normalize_treatment_dict():
     # Dict input: unit -> treat time
     treat_dict = {"A": 5, "B": 7}
     df = pd.DataFrame({"unit": ["A", "B", "C"], "time": [1, 2, 3], "treated": [0, 0, 0]})
-    result = normalize_treatment(df, unit_col="unit", time_col="time", treatment=treat_dict)
+    result = normalize_treatment(df, unit_col="unit", time_col="time", treatment=treat_dict).set_index("unit")
     assert set(result.index) == {"A", "B"}
-    assert result["A"] == 5
-    assert result["B"] == 7
+    assert result.loc["A"]["treatment_start"] == 5
+    assert result.loc["B"]["treatment_start"] == 7
 
 
 def test_normalize_treatment_column_datetime():
     # Test with datetime time_col
-    df = pd.DataFrame({"unit": ["A", "A", "B", "B"], "time": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-01", "2020-01-02"]), "treated": [0, 1, 0, 0]})
+    df = pd.DataFrame({"unit": ["A", "A", "B", "B"], "time": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-01", "2020-01-02"]), "treated": [0, 1, 0, 0]}).set_index("unit")
     result = normalize_treatment(df, unit_col="unit", time_col="time", treatment="treated")
     assert set(result.index) == {"A"}
-    assert result["A"] == pd.Timestamp("2020-01-02")
+    assert result.loc["A"]["treatment_start"] == pd.Timestamp("2020-01-02")
