@@ -1,5 +1,6 @@
 import re
 
+import maplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -18,6 +19,21 @@ class Staggered(BaseCausalInference):
         self.model_effects[self.value_col] = table
         self.models[self.value_col] = self.model
         return self
+
+    import matplotlib.pyplot as plt
+
+    def plot_effects_with_error_bands(self, time_col="time", estimate_col="estimate", ci_lower_col="ci_lower", ci_upper_col="ci_upper", title="Estimated Effect"):
+        effects = self.model_effects[self.value_col]
+        plt.figure(figsize=(10, 6))
+        plt.plot(effects[time_col], effects[estimate_col], label="Estimate", color="blue")
+        plt.fill_between(effects[time_col], effects[ci_lower_col], effects[ci_upper_col], color="blue", alpha=0.2, label="Error Band")
+        plt.axhline(0, color="black", linestyle="--", linewidth=1)
+        plt.xlabel("Time")
+        plt.ylabel("Estimated Effect")
+        plt.title(title)
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
 
 
 def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_start_col, covariates=None):
