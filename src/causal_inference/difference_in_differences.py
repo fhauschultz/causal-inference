@@ -137,6 +137,6 @@ def extract_staggered_treatment_effect(model, alpha=0.05, cov_type="nonrobust", 
     upper = {extract_number(k): effect_ci[k]["upper"] for k in effect_params.keys() if k in effect_ci}
 
     # Build DataFrame
-    df = pd.DataFrame({"estimate": pd.Series(estimates), "lower": pd.Series(lower), "upper": pd.Series(upper)})
+    df = pd.DataFrame({"estimate": pd.Series(estimates), "ci_lower": pd.Series(lower), "ci_upper": pd.Series(upper)})
     df.index.name = "event_time"
     return df.sort_index()
