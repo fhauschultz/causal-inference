@@ -1,230 +1,66 @@
 import re
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
-from scipy.stats import t
 
 from causal_inference.utils import BaseCausalInference
 
 
-class EventStudy(BaseCausalInference):
+class Staggered(BaseCausalInference):
     def fit(self, significance_level=0.1):
         self.models = {}
         self.model_effects = {}
         self.significance_level = significance_level
         for var in self.value_col:
-            x, y = event_study_data(self.data, self.time_col, self.unit_col, self.treatment, var, self.covariates)
-            if not self.sklearn_model:
-                self.model = sm.OLS(y, x).fit()
-                table = extract_all_coefficients_statsmodels(self.model, cov_type=self.cov_type, alpha=significance_level)
-            else:
-                self.model = self.sklearn_model.fit(x, y)
-                table = extract_coefficients_sklearn(self.model)
-
-            self.model_effects[var] = add_treatment_group(table)
+            model, df = estimate_staggered_did(self.data, self.unit_col, self.time_col, var, "treatment_start", covariates=self.covariates)
+            table = extract_staggered_treatment_effect(model, alpha=significance_level, cov_type=self.cov_type)
+            self.model_effects[var] = table
             self.models[var] = self.model
         return self
 
-    def plot_treatment_control(self, variables=None, linewidth=2.5):
-        variables = _set_variables(variables, self.value_col)
-        fig, ax = _make_fig(variables)
-        fig.suptitle("Treatment and Control Development", fontsize=14)
-        confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
-        for i, variable in enumerate(variables):
-            plotdata = self.model_effects[variable]
-            ax[i].axvline(0, label="Experiment Start", c="black", lw=linewidth)
-            ax[i].axvline(self.experiment_duration_days, label="Experiment End", c="black", linestyle="--", lw=linewidth)
-            ax[i].plot(plotdata["treatment_group"], label="Treatment Group", lw=linewidth)
-            ax[i].plot(plotdata["control_group"], label="Control Group", lw=linewidth)
-            if "treatment_group_lower_bound" in plotdata.columns:
-                ax[i].fill_between(plotdata.index, plotdata["treatment_group_lower_bound"], plotdata["treatment_group_upper_bound"], alpha=0.2, label=f"{confidence_interval_size}% Confidence Interval")
-            if "control_group_lower_bound" in plotdata.columns:
-                ax[i].fill_between(plotdata.index, plotdata["control_group_lower_bound"], plotdata["control_group_upper_bound"], alpha=0.2, label=f"{confidence_interval_size}% Confidence Interval")
 
-            ax[i].set_xlabel("Periods Since Experiment")
-            ax[i].set_ylabel(variable)
-            if i == 0:
-                fig.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), fancybox=True, shadow=False, ncol=2)
-        return fig
+def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_start_col, covariates=None):
+    """
+    Estimate staggered Difference-in-Differences (DiD) using statsmodels OLS.
+    Each treated unit can have a different treatment start period.
 
-    def plot_treatment_effects(self, variables=None, linewidth=2.5):
-        variables = _set_variables(variables, self.value_col)
-        fig, ax = _make_fig(variables)
-        confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
-        fig.suptitle("Estimated Period-Specific Treatment Effects", fontsize=14)
-        for i, variable in enumerate(variables):
-            plotdata = self.model_effects[variable]
-            ax[i].axvline(0, label="Experiment Start", c="black", lw=linewidth)
-            ax[i].axvline(self.experiment_duration_days, label="Experiment End", c="black", linestyle="--", lw=linewidth)
-            ax[i].plot(plotdata["treatment_effect"], label="Treatment Effect", lw=linewidth)
-            if "treatment_effect_lower_bound" in plotdata.columns:
-                ax[i].fill_between(plotdata.index, plotdata["treatment_effect_lower_bound"], plotdata["treatment_effect_upper_bound"], alpha=0.2, label=f"{confidence_interval_size}% Confidence Interval")
-            ax[i].axhline(0, c="gray", linestyle="--", lw=linewidth)
-            ax[i].set_xlabel("Periods Since Experiment")
+    Args:
+        data: DataFrame with panel data.
+        unit_col: Column name for unit identifier.
+        time_col: Column name for time variable.
+        outcome_col: Column name for outcome variable.
+        treatment_start_col: Column name for treatment start period (NaN for never-treated).
+        covariates: List of additional covariate column names (optional).
 
-            ax[i].set_ylabel(variable)
-            if i == 0:
-                fig.legend(loc="upper center", bbox_to_anchor=(0.5, 0.01), fancybox=True, shadow=False, ncol=2)
-        return fig
+    Returns:
+        model: Fitted statsmodels OLS model.
+        df: DataFrame with periods since treatment and treatment indicator.
+    """
 
+    df = data.copy()
+    # Calculate periods since treatment start (NaN for never-treated)
+    df["periods_since_treatment"] = df[time_col] - df[treatment_start_col]
+    # Indicator for post-treatment period (0 if never treated or pre-treatment)
+    df["treated"] = (df["periods_since_treatment"] >= 0) & (~df[treatment_start_col].isna())
+    df["treated"] = df["treated"].astype(int)
 
-class BinaryDiD(BaseCausalInference):
-    def fit(self, significance_level=0.1):
-        self.models = {}
-        self.model_effects = {}
-        self.significance_level = significance_level
-        for var in self.value_col:
-            table, model = cumulative_treatment_effects(self.data, self.unit_cols, "days_since_treatment_start", self.treatment, covariates=self.covariates, outcome_col=var, alpha=significance_level, cov_type=self.cov_type)
-            self.models[var] = model
-            self.model_effects[var] = table
-        return self
+    # Optionally, create event-time dummies for dynamic effects
+    event_time_dummies = pd.get_dummies(df["periods_since_treatment"], prefix="event_time", dtype=float, drop_first=True)
+    # Only keep dummies for post-treatment periods (e.g., 0, 1, 2, ...)
+    post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")]
 
-    def plot_treatment_effect(self, variables=None, linewidth=2.5):
-        variables = _set_variables(variables, self.value_col)
-        fig, ax = _make_fig(variables)
-        fig.suptitle("Estimated Two-way Fixed Effects Treatment Effect", fontsize=14)
-        confidence_interval_size = int(np.round((1 - self.significance_level) * 100, 0))
-        for i, variable in enumerate(variables):
-            ax[i].axvline(0, label="Experiment Start", c="black", lw=linewidth)
-            ax[i].axvline(self.experiment_duration_days, label="Experiment End", c="black", lw=linewidth, linestyle="--")
-            ax[i].axhline(0, c="gray", lw=linewidth, linestyle="--", alpha=0.5)
-            ax[i].plot(self.model_effects[variable].treatment_effect_cumulative, lw=linewidth)
-            ax[i].fill_between(self.model_effects[variable].index, self.model_effects[variable].treatment_effect_cumulative_lower_bound, self.model_effects[variable].treatment_effect_cumulative_upper_bound, alpha=0.2, label=f"{confidence_interval_size}% Confidence Interval")
-            ax[i].set_xlabel("Periods Since Experiment")
-            ax[i].set_ylabel(variable)
-            if i == 0:
-                fig.legend(loc="upper center", bbox_to_anchor=(0.5, 0.01), fancybox=True, shadow=False, ncol=2)
-        return fig
-
-
-def _set_variables(variables, value_col):
-    if isinstance(variables, str):
-        variables = [variables]
-    if not variables:
-        variables = value_col
-    return variables
-
-
-def _make_fig(variables):
-    subplot_h, subplot_w = 4, 4
-    n_vars = len(variables)
-    fig, ax = plt.subplots(len(variables), 1, figsize=(subplot_w, n_vars * subplot_h), gridspec_kw={"hspace": 0.2})
-    if len(variables) == 1:
-        ax = [ax]  # Ensures it's always iterable
-    return fig, ax
-
-
-def package_data_fixed_effects(data, treatment_col, time_col, outcome_col=None, covariates=None):
-    cov_data = None
+    # Build regression matrix
+    X = pd.get_dummies(df[unit_col], prefix="unit", drop_first=True, dtype=float)
+    X = X.join(pd.get_dummies(df[time_col], prefix="time", drop_first=True, dtype=float))
+    X = X.join(post_event_dummies)
     if covariates:
-        cov_data = data[covariates]
-    treatment_dummy = pd.get_dummies(data[treatment_col], prefix="treatment", drop_first=True, dtype=float)
-    time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
-    post_treatment_interaction = pd.get_dummies(data["post_treatment_interaction"], prefix="time_treatment_effect", drop_first=True, dtype=float)
-    x = pd.concat([time_dummies, treatment_dummy, post_treatment_interaction, cov_data], axis=1)
-    if outcome_col:
-        y = data[outcome_col]
-    return x, y
+        X = X.join(df[covariates].astype(float))
+    X = sm.add_constant(X)
+    y = df[outcome_col].astype(float)
 
-
-def bdid_did_data(data, unit_col, time_col, treatment_col, covariates=None, outcome_col=None):
-    y = None
-    # Create time dummies and identify post-treatment periods
-    data["post_treatment_interaction"] = data[treatment_col]
-    x, y = package_data_fixed_effects(data, treatment_col, time_col, outcome_col, covariates)
-    return x, y
-
-
-def event_study_data(data, time_col, unit_col, treatment_info, outcome_col, covariates=None):
-    # Create time dummies and identify post-treatment periods
-    time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
-    data = add_periods_since_treatment_start(data, treatment_info, unit_col)
-    post_treatment_interaction = pd.get_dummies(data["post_treatment_interaction"], prefix="time_treatment_effect", drop_first=True, dtype=float)
-
-    # Rename post_treatment_interaction columns
-    post_treatment_interaction.columns = [col.replace("time", "time_treatment_effect") for col in post_treatment_interaction.columns]
-    cov_data = None
-
-    if covariates:
-        cov_data = data[covariates]
-
-    x = pd.concat([time_dummies, post_treatment_interaction, cov_data], axis=1)
-    if outcome_col:
-        y = data[outcome_col]
-    return x, y
-
-
-def add_periods_since_treatment_start(data, treatment, unit_col):
-    data = data.merge(treatment.rename("treatment_start"), on=unit_col, how="left")
-    data["periods_since_treatment_start"] = data["year"] - data["treatment_start"]
-    data["periods_since_treatment_start"] = data["periods_since_treatment_start"].fillna(0)
-    data["post_treatment_interaction"] = np.where(data["periods_since_treatment_start"] >= 1, data["periods_since_treatment_start"], 0)
-    return data
-
-
-def cumulative_treatment_effects(data, unit_col, time_col, treatment_col, covariates=None, outcome_col=None, alpha=0.05, cov_type="nonrobust"):
-    cumulative_effects = []
-    max_period = data.days_since_treatment_start.max() + 1
-    print("Estimating cumulative treatment effects for periods 1 to", max_period, "...")
-    for period in np.arange(1, max_period):
-        estimation_data = data[data.days_since_treatment_start <= period].copy(deep=False)
-        x, y = bdid_did_data(estimation_data, unit_col, time_col, treatment_col, outcome_col=outcome_col, covariates=covariates)
-        model = sm.OLS(y, x).fit()
-        treatment_effect_data = extract_all_coefficients_statsmodels(model, alpha=alpha, cov_type=cov_type).dropna()[["treatment_effect", "treatment_effect_lower_bound", "treatment_effect_upper_bound"]]
-        treatment_effect_data["days_since_treatment_start"] = period
-        cumulative_effects.append(treatment_effect_data)
-
-    cumulative_effects = pd.concat(cumulative_effects).set_index("days_since_treatment_start")
-    cumulative_effects = cumulative_effects.rename(columns={"treatment_effect": "treatment_effect_cumulative", "treatment_effect_lower_bound": "treatment_effect_cumulative_lower_bound", "treatment_effect_upper_bound": "treatment_effect_cumulative_upper_bound"})
-    return cumulative_effects, model
-
-
-def add_treatment_group(data):
-    data["treatment_group"] = data["control_group"] + data["treatment_effect"]
-    data["treatment_group_lower_bound"] = data["control_group"] + data["treatment_effect_lower_bound"]
-    data["treatment_group_upper_bound"] = data["control_group"] + data["treatment_effect_upper_bound"]
-    return data
-
-
-# Function to extract coefficients
-
-
-def extract_coefficients_statsmodels(coefficients):
-    out_names = ["treatment_effect", "control_group"]
-    time_coefficients = coefficients.filter(like="time_")  # .dropna()
-    treatment_group = time_coefficients.loc[time_coefficients.index.str.contains("treatment_effect")]
-    control_group = time_coefficients.loc[~time_coefficients.index.str.contains("treatment_effect")]
-    treatment_group.index = [item.replace("_treatment_effect", "") for item in treatment_group.index]
-    df = pd.concat([treatment_group, control_group], axis=1, keys=out_names, join="outer")
-    df.index = extract_numbers(df.index)
-    return df
-
-
-def extract_all_coefficients_statsmodels(model, alpha=0.05, cov_type="nonrobust"):
-    confidence_bands = conf_int_robust(model, alpha=alpha, cov_type=cov_type)
-    estimates = extract_coefficients_statsmodels(model.params)
-    upper_confidence_bands = extract_coefficients_statsmodels(confidence_bands["upper"])
-    lower_confidence_bands = extract_coefficients_statsmodels(confidence_bands["lower"])
-
-    upper_confidence_bands.columns = [a + "_upper_bound" for a in upper_confidence_bands.columns]
-    lower_confidence_bands.columns = [a + "_lower_bound" for a in lower_confidence_bands.columns]
-
-    return (estimates.join(upper_confidence_bands, how="left").join(lower_confidence_bands, how="left")).sort_index()
-
-
-# Function to extract coefficients from sklearn
-def extract_coefficients_sklearn(model):
-    feature_names = model.feature_names_in_
-    coef_series = pd.Series(model.coef_, index=feature_names)
-    time_coefficients = coef_series.filter(like="time_").dropna()
-    treatment_group = time_coefficients.loc[time_coefficients.index.str.contains("treatment_effect")]
-    control_group = time_coefficients.loc[~time_coefficients.index.str.contains("treatment_effect")]
-    treatment_group.index = [item.replace("_treatment_effect", "") for item in treatment_group.index]
-    df = pd.concat([treatment_group, control_group], axis=1, keys=["treatment_group", "control_group"], join="outer")
-    df.index = extract_numbers(df.index)
-    return df.dropna()
+    model = sm.OLS(y, X).fit()
+    return model, df
 
 
 def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
@@ -261,5 +97,29 @@ def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
     return pd.DataFrame({"lower": ci_lower, "upper": ci_upper})
 
 
-def extract_numbers(index_values):
-    return [int(re.search(r"[-\d]+$", item).group()) for item in index_values]
+def extract_staggered_treatment_effect(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
+    """
+    Extract estimated treatment effects and confidence intervals for staggered DiD.
+    Returns a DataFrame with event-time effects and confidence bands.
+    Allows toggling robust covariance type via cov_type.
+    """
+
+    # Only keep coefficients for event_time dummies (dynamic treatment effects)
+    effect_params = {k: v for k, v in model.params.items() if k.startswith("event_time_")}
+    # Compute robust confidence intervals
+    ci = conf_int_robust(model, alpha=alpha, cov_type=cov_type, **cov_kwds)
+    effect_ci = {k: ci.loc[k] for k in effect_params.keys() if k in ci.index}
+
+    # Extract event-time numbers
+    def extract_number(s):
+        match = re.search(r"event_time_(-?\d+)", s)
+        return int(match.group(1)) if match else None
+
+    estimates = {extract_number(k): v for k, v in effect_params.items()}
+    lower = {extract_number(k): effect_ci[k]["lower"] for k in effect_params.keys() if k in effect_ci}
+    upper = {extract_number(k): effect_ci[k]["upper"] for k in effect_params.keys() if k in effect_ci}
+
+    # Build DataFrame
+    df = pd.DataFrame({"estimate": pd.Series(estimates), "lower": pd.Series(lower), "upper": pd.Series(upper)})
+    df.index.name = "event_time"
+    return df.sort_index()
