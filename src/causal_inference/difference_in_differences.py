@@ -13,7 +13,7 @@ class Staggered(BaseCausalInference):
         self.models = {}
         self.model_effects = {}
         self.significance_level = significance_level
-        model, df = estimate_staggered_did(self.data, self.unit_col, self.time_col, var, "treatment_start", covariates=self.covariates)
+        model, df = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates)
         table = extract_staggered_treatment_effect(model, alpha=significance_level, cov_type=self.cov_type)
         self.model_effects[self.value_col] = table
         self.models[self.value_col] = self.model
