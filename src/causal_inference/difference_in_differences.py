@@ -21,13 +21,13 @@ class Staggered(BaseCausalInference):
         self.model_fitted = True
         return self
 
-    def plot_effects_with_error_bands(self, time_col="time", estimate_col="estimate", ci_lower_col="ci_lower", ci_upper_col="ci_upper", title="Estimated Effect"):
+    def plot_effects_with_error_bands(self, title="Estimated Effect"):
         if not self.model_fitted:
             raise ValueError("Model must be fitted before plotting effects.")
         effects = self.model_effects[self.value_col]
         plt.figure(figsize=(10, 6))
-        plt.plot(effects[time_col], effects[estimate_col], label="Estimate", color="blue")
-        plt.fill_between(effects[time_col], effects[ci_lower_col], effects[ci_upper_col], color="blue", alpha=0.2, label="Error Band")
+        plt.plot(effects.index, effects["estimate"], label="Estimate", color="blue")
+        plt.fill_between(effects.index, effects["ci_lower"], effects["ci_upper"], color="blue", alpha=0.2, label="Error Band")
         plt.axhline(0, color="black", linestyle="--", linewidth=1)
         plt.xlabel("Time")
         plt.ylabel("Estimated Effect")
