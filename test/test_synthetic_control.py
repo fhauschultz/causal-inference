@@ -178,7 +178,7 @@ def test_normalize_treatment_dict():
 
 def test_normalize_treatment_column_datetime():
     # Test with datetime time_col
-    df = pd.DataFrame({"unit": ["A", "A", "B", "B"], "time": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-01", "2020-01-02"]), "treated": [0, 1, 0, 0]}).set_index("unit")
-    result = normalize_treatment(df, unit_col="unit", time_col="time", treatment="treated")
+    df = pd.DataFrame({"unit": ["A", "A", "B", "B"], "time": pd.to_datetime(["2020-01-01", "2020-01-02", "2020-01-01", "2020-01-02"]), "treated": [0, 1, 0, 0]})
+    result = normalize_treatment(df, unit_col="unit", time_col="time", treatment="treated").set_index("unit")
     assert set(result.index) == {"A"}
     assert result.loc["A"]["treatment_start"] == pd.Timestamp("2020-01-02")
