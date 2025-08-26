@@ -141,7 +141,7 @@ def event_study_data(data, time_col, unit_col, treatment_info, outcome_col, cova
     # Create time dummies and identify post-treatment periods
     time_dummies = pd.get_dummies(data[time_col], prefix="time", dtype=float)
     data = add_periods_since_treatment_start(data, treatment_info, unit_col)
-    post_treatment_interaction = data["periods_since_treatment_start"]
+    post_treatment_interaction = pd.get_dummies(data["post_treatment_interaction"], prefix="time_treatment_effect", drop_first=True, dtype=float)
 
     # Rename post_treatment_interaction columns
     post_treatment_interaction.columns = [col.replace("time", "time_treatment_effect") for col in post_treatment_interaction.columns]
@@ -160,6 +160,7 @@ def add_periods_since_treatment_start(data, treatment, unit_col):
     data = data.merge(treatment.rename("treatment_start"), on=unit_col, how="left")
     data["periods_since_treatment_start"] = data["year"] - data["treatment_start"]
     data["periods_since_treatment_start"] = data["periods_since_treatment_start"].fillna(0)
+    data["post_treatment_interaction"] = np.where(data["periods_since_treatment_start"] >= 1, data["periods_since_treatment_start"], 0)
     return data
 
 
