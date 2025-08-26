@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 import causal_inference.difference_in_differences as did
 
@@ -51,8 +52,8 @@ def generated_staggered_treatment_data(treatment_effect=3):
 def test_staggered_treatment_effect_close_to_truth():
     treatment_effect = 3
     data = generated_staggered_treatment_data(treatment_effect=treatment_effect)
-    did = did.Staggered(data=data, unit_col="unit", time_col="time", value_col="outcome", treatment="treated", covariates=None, cov_type="HC3").fit()
+    model = did.Staggered(data=data, unit_col="unit", time_col="time", value_col="outcome", treatment="treated", covariates=None, cov_type="HC3").fit()
     # Only check post-treatment event times (event_time >= 0)
-    effects = did.model_effects["outcome"]
+    effects = model.model_effects["outcome"]
     post_effects = effects[effects.index >= 0]["estimate"]
     assert np.allclose(post_effects, treatment_effect, atol=0.5)
