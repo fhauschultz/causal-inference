@@ -18,9 +18,12 @@ class Staggered(BaseCausalInference):
         table = extract_staggered_treatment_effect(model, alpha=significance_level, cov_type=self.cov_type)
         self.model_effects[self.value_col] = table
         self.models[self.value_col] = self.model
+        self.model_fitted = True
         return self
 
     def plot_effects_with_error_bands(self, time_col="time", estimate_col="estimate", ci_lower_col="ci_lower", ci_upper_col="ci_upper", title="Estimated Effect"):
+        if not self.model_fitted:
+            raise ValueError("Model must be fitted before plotting effects.")
         effects = self.model_effects[self.value_col]
         plt.figure(figsize=(10, 6))
         plt.plot(effects[time_col], effects[estimate_col], label="Estimate", color="blue")
