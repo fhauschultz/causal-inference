@@ -74,6 +74,35 @@ def proposition_99_study_test_column_interface(sample_data):
     assert np.isclose(np.std(synth.weights.values), 0.0816086593196616)
 
 
+def proposition_99_study_test_multiple_treated_units(sample_data):
+    """
+    Testing the model on the proposition 99 study
+
+    """
+
+    sample_data["status"] = 0
+
+    sample_data.loc[(sample_data["state"] == "California") & (sample_data["year"] >= 1988), "status"] = 1
+    sample_data.loc[(sample_data["state"] == "Alabama") & (sample_data["year"] >= 1990), "status"] = 1
+
+    synth = sc.SyntheticControl(
+        data=sample_data.sample(frac=1),
+        unit_col="state",
+        time_col="year",
+        value_col="cigsale",
+        treatment="status",
+        covariates=["retprice"],
+    )
+
+    synth.fit(calculate_se=False)
+
+    assert np.isclose(np.mean(synth.weights.values), 0.026316)
+    assert np.isclose(np.max(synth.weights.values), 0.432629)
+    assert np.isclose(np.min(synth.weights.values), 0.0)
+    assert np.isclose(np.median(synth.weights.values), 8.881438853501265e-15)
+    assert np.isclose(np.std(synth.weights.values), 0.0816086593196616)
+
+
 def test_filter_donor_units_no_matching_units():
     data = {"UNITS": ["A", "A", "B", "B", "C", "C", "C"], "TIME": [1, 2, 1, 2, 1, 2, 3], "VAR": [10, 20, 10, 20, 10, 20, 30]}
     df = pd.DataFrame(data)
