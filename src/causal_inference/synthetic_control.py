@@ -357,8 +357,7 @@ class SyntheticControl(BaseCausalInference):
         --------
             pd.Series: Summary of the results.
         """
-        impact = self.results()
-        return impact[impact.index > self.experiment_date].mean()
+        return self.results[self.results > self.experiment_date].mean()
 
     def get_experiment_date(self):
         """
