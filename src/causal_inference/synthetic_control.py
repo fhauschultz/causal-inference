@@ -133,8 +133,7 @@ class SyntheticControl(BaseCausalInference):
         placebo_effects_np = np.array(placebo_effects)
         upper_bound = np.percentile(placebo_effects_np, 100 - significance_level / 2, axis=1)
         lower_bound = np.percentile(placebo_effects_np, significance_level / 2, axis=1)
-        mean = np.mean(placebo_effects_np, axis=1)
-        self.se = pd.DataFrame({"Upper Bound": upper_bound - mean, "Lower Bound": lower_bound - mean}, index=placebo_effects.index)
+        self.se = pd.DataFrame({"Upper Bound": upper_bound, "Lower Bound": lower_bound}, index=placebo_effects.index)
 
         self.se_computed = True
         self.placebo_effects = placebo_effects
@@ -235,7 +234,7 @@ class SyntheticControl(BaseCausalInference):
         plt.plot(impact["Period"], impact["Treated"], label="Treated Unit", linestyle="-", color="blue", lw=3, alpha=0.8)
         plt.plot(impact["Period"], impact["Synthetic Control"], label="Synthetic Control", linestyle="--", color="black", lw=3, alpha=0.8)
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Synthetic Control"] + impact["Lower Bound"], impact["Synthetic Control"] + impact["Upper Bound"], color="blue", alpha=0.2, label="Confidence Band")
+            plt.fill_between(impact["Period"], impact["Lower Bound"], impact["Upper Bound"], color="blue", alpha=0.2, label="Confidence Band")
         plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
 
         if self.training_end_date:
