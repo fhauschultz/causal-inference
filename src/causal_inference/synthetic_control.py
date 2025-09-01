@@ -270,8 +270,7 @@ class SyntheticControl(BaseCausalInference):
         if self.training_end_date:
             plt.axvline(x=self.training_end_date, color="magenta", linestyle="--", label="Training End Date", alpha=0.5, lw=2)
 
-        plt.ylabel("Effect")
-        plt.title(self.value_col)
+        plt.title(self.value_col + " - Effect")
         plt.xticks(rotation=90)
         plt.axhline(0, c="gray", alpha=0.2)
         plt.legend()
