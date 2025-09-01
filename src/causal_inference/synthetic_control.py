@@ -233,7 +233,7 @@ class SyntheticControl(BaseCausalInference):
             layout = "row"
 
         if figsize is None:
-            figsize = (18, 5) if layout == "row" else (8, 14)
+            figsize = (14, 8) if layout == "row" else (8, 14)
 
         nrows, ncols = (1, 3) if layout == "row" else (3, 1)
         fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
