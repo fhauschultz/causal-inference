@@ -250,8 +250,6 @@ class SyntheticControl(BaseCausalInference):
         --------
             pd.DataFrame: DataFrame containing the results.
         """
-        if not treated_unit:
-            treated_unit = self.treated_unit
         impact = pd.DataFrame()
         impact["Treated"] = self._get_treated_values(treated_unit)
         impact["Synthetic Control"] = self.synthetic_controls[treated_unit]
