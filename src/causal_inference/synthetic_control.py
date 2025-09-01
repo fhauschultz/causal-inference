@@ -222,8 +222,8 @@ class SyntheticControl(BaseCausalInference):
         """
         treatment_effects = self.results[self.results > self.get_experiment_date()].mean()
         plt.figure(figsize=(10, 6))
-        plt.hist(self.placebo_effects.mean(1), c="blue", alpha=0.2)
-        plt.axvline(treatment_effects["Effect"], c="blue", label="Treatment Effect")
+        plt.hist(self.placebo_effects.mean(1), color="blue", alpha=0.2)
+        plt.axvline(treatment_effects["Effect"], color="blue", label="Treatment Effect")
         plt.legend()
         plt.show()
 
