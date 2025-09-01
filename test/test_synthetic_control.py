@@ -154,6 +154,7 @@ def test_that_plot_works_if_fit_has_not_been_run(sample_data):
     )
 
     synth.plot()
+    synth.plot_histogram()
 
 
 def test_normalize_treatment_column():
