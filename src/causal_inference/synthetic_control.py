@@ -65,6 +65,21 @@ class SyntheticControl(BaseCausalInference):
         outcome_data = self.data[[self.unit_col, self.time_col, self.value_col]]
         return outcome_data[outcome_data[self.unit_col] == treated_unit].pivot(index=self.time_col, columns=self.unit_col, values=self.value_col).iloc[:, 0]
 
+    def _get_synthetic_control_values(self, treated_unit):
+        """
+        Get values for the synthetic control.
+
+        Parameters:
+        -----------
+            treated_unit: str
+                Identifier for the treated unit.
+
+        Returns:
+        --------
+            pd.Series: Values for the synthetic control.
+        """
+        return self.synthetic_controls[treated_unit]
+
     def _get_results_for_unit(self, treated_unit):
         """
         Get the results of the synthetic control method.
@@ -80,7 +95,7 @@ class SyntheticControl(BaseCausalInference):
         """
         impact = pd.DataFrame()
         impact["Treated"] = self._get_treated_values(treated_unit)
-        impact["Synthetic Control"] = self.synthetic_controls[treated_unit]
+        impact["Synthetic Control"] = self._get_synthetic_control_values(treated_unit)
         impact["Effect"] = impact["Treated"] - impact["Synthetic Control"]
         if self.se_computed:
             impact = impact.join(self.se, how="left")
