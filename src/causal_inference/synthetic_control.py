@@ -208,72 +208,195 @@ class SyntheticControl(BaseCausalInference):
             # Multiple treated units or no treatment info
             return 0
 
-    def plot(self):
-        self.plot_treatment_control()
-        self.plot_effect()
-        self.plot_histogram()
-
-    def plot_histogram(self):
+    def plot(self, layout="row", figsize=None, **kwargs):
         """
-        Plot a histogram of the placebo effects.
-        """
-        treatment_effects = self.results[self.results.Period > self.get_experiment_date()].mean()
-        placebo_effects = self.placebo_effects[self.placebo_effects.index > self.get_experiment_date()]
-        plt.figure(figsize=(10, 6))
-        plt.hist(placebo_effects.mean(0), color=self.matplotlib_theme_color, alpha=0.2)
-        plt.axvline(treatment_effects["Effect"], color=self.matplotlib_theme_color, label="Treatment Effect", linewidth=2)
-        plt.legend()
-        plt.show()
+        Create a single figure with subplots for:
+        1) Treated vs Synthetic Control
+        2) Effect
+        3) Placebo-effects Histogram
 
-    def plot_treatment_control(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
-        """
-        Plot the treated unit and synthetic control.
+        Parameters
+        ----------
+        layout : {"row","col"}, optional
+            Arrange subplots horizontally ("row") or vertically ("col").
+        figsize : tuple, optional
+            Figure size passed to plt.subplots(). If None, picks a good default.
+        **kwargs :
+            Extra kwargs forwarded to the individual plot_* methods if needed.
 
+        Returns
+        -------
+        fig : matplotlib.figure.Figure
+        axes : np.ndarray of matplotlib.axes.Axes (length 3)
+        """
+        if layout not in {"row", "col"}:
+            layout = "row"
+
+        if figsize is None:
+            figsize = (18, 5) if layout == "row" else (8, 14)
+
+        nrows, ncols = (1, 3) if layout == "row" else (3, 1)
+        fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=figsize)
+        axes = axes.ravel()
+
+        # 1) Treated vs Synthetic Control
+        self.plot_treatment_control(ax=axes[0], **kwargs)
+
+        # 2) Effect
+        self.plot_effect(ax=axes[1], **kwargs)
+
+        # 3) Placebo-effects Histogram
+        self.plot_histogram(ax=axes[2], **kwargs)
+
+        plt.tight_layout()
+        return fig, axes
+
+    def plot_histogram(self, ax=None):
+        """
+        Plot a histogram of the placebo effects on the provided axis.
+        """
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+        post_mask = self.results["Period"] > self.get_experiment_date()
+        treatment_effects = self.results.loc[post_mask].mean(numeric_only=True)
+
+        placebo_post = self.placebo_effects.loc[self.placebo_effects.index > self.get_experiment_date()]
+        placebo_means = placebo_post.mean(axis=0)
+
+        ax.hist(placebo_means, alpha=0.2, color=self.matplotlib_theme_color, label="Placebo Means")
+        ax.axvline(
+            treatment_effects["Effect"],
+            color=self.matplotlib_theme_color,
+            label="Treatment Effect",
+            linewidth=2,
+        )
+        ax.set_title("Placebo Effects (Post-Period) vs Treatment Effect")
+        ax.legend()
+        sns.despine(ax=ax)
+        return ax
+
+    def plot_treatment_control(
+        self,
+        ax=None,
+        calculate_se=True,
+        significance_level=None,
+        prune_data_for_se_computation=True,
+    ):
+        """
+        Plot the treated unit and synthetic control on the provided axis.
         """
         if not self.model_fitted:
-            self.fit(calculate_se=calculate_se, significance_level=significance_level, prune_data_for_se_computation=prune_data_for_se_computation)
+            self.fit(
+                calculate_se=calculate_se,
+                significance_level=significance_level,
+                prune_data_for_se_computation=prune_data_for_se_computation,
+            )
+
         impact = self.results
 
-        plt.figure(figsize=(10, 6))
-        plt.title(self.value_col)
-        plt.plot(impact["Period"], impact["Treated"], label="Treated Unit", linestyle="-", color=self.matplotlib_theme_color, lw=3, alpha=0.8)
-        plt.plot(impact["Period"], impact["Synthetic Control"], label="Synthetic Control", linestyle="--", color="black", lw=3, alpha=0.8)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+        ax.set_title(self.value_col)
+        ax.plot(
+            impact["Period"],
+            impact["Treated"],
+            label="Treated Unit",
+            linestyle="-",
+            color=self.matplotlib_theme_color,
+            lw=3,
+            alpha=0.8,
+        )
+        ax.plot(
+            impact["Period"],
+            impact["Synthetic Control"],
+            label="Synthetic Control",
+            linestyle="--",
+            color="black",
+            lw=3,
+            alpha=0.8,
+        )
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Lower Bound"], impact["Upper Bound"], color=self.matplotlib_theme_color, alpha=0.2, label="Confidence Band")
-        plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
+            ax.fill_between(
+                impact["Period"],
+                impact["Lower Bound"],
+                impact["Upper Bound"],
+                color=self.matplotlib_theme_color,
+                alpha=0.2,
+                label="Confidence Band",
+            )
 
-        if self.training_end_date:
-            plt.axvline(x=self.training_end_date, color="magenta", linestyle="--", label="Training End Date", alpha=0.5, lw=2)
+        ax.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
+        if getattr(self, "training_end_date", None):
+            ax.axvline(
+                x=self.training_end_date,
+                color="magenta",
+                linestyle="--",
+                label="Training End Date",
+                alpha=0.5,
+                lw=2,
+            )
 
-        plt.xticks(rotation=90)
-        plt.legend()
-        sns.despine()
-        plt.show()
+        for lbl in ax.get_xticklabels():
+            lbl.set_rotation(90)
+        ax.legend()
+        sns.despine(ax=ax)
+        return ax
 
-    def plot_effect(self):
+    def plot_effect(self, ax=None):
         """
-        Plot the effect of the treatment.
+        Plot the effect of the treatment on the provided axis.
         """
         if not self.model_fitted:
             print("Synthetic control has not been computed. Please run the fit method first.")
-            return
+            return None
+
         impact = self.results
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(impact["Period"], impact["Effect"], label="Treated Unit", linestyle="-", color=self.matplotlib_theme_color, lw=3, alpha=0.8)
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 6))
+
+        ax.plot(
+            impact["Period"],
+            impact["Effect"],
+            label="Treated Unit",
+            linestyle="-",
+            color=self.matplotlib_theme_color,
+            lw=3,
+            alpha=0.8,
+        )
+
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Lower Bound"] - impact["Treated"] + impact["Effect"], impact["Upper Bound"] - impact["Treated"] + impact["Effect"], color=self.matplotlib_theme_color, alpha=0.2, label="Confidence Band")
-        plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
+            lower = impact["Lower Bound"] - impact["Treated"] + impact["Effect"]
+            upper = impact["Upper Bound"] - impact["Treated"] + impact["Effect"]
+            ax.fill_between(
+                impact["Period"],
+                lower,
+                upper,
+                color=self.matplotlib_theme_color,
+                alpha=0.2,
+                label="Confidence Band",
+            )
 
-        if self.training_end_date:
-            plt.axvline(x=self.training_end_date, color="magenta", linestyle="--", label="Training End Date", alpha=0.5, lw=2)
+        ax.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
+        if getattr(self, "training_end_date", None):
+            ax.axvline(
+                x=self.training_end_date,
+                color="magenta",
+                linestyle="--",
+                label="Training End Date",
+                alpha=0.5,
+                lw=2,
+            )
 
-        plt.title(self.value_col + " - Effect")
-        plt.xticks(rotation=90)
-        plt.axhline(0, c="gray", alpha=0.2)
-        plt.legend()
-        sns.despine()
-        plt.show()
+        ax.set_title(self.value_col + " - Effect")
+        ax.axhline(0, c="gray", alpha=0.2)
+        for lbl in ax.get_xticklabels():
+            lbl.set_rotation(90)
+        ax.legend()
+        sns.despine(ax=ax)
+        return ax
 
 
 def get_inference_data(data, time_col, unit_col, value_col, treated_unit):
