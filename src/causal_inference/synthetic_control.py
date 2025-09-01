@@ -258,7 +258,7 @@ class SyntheticControl(BaseCausalInference):
         plt.figure(figsize=(10, 6))
         plt.plot(impact["Period"], impact["Effect"], label="Treated Unit", linestyle="-", color="blue", lw=3, alpha=0.8)
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Lower Bound"], impact["Upper Bound"], color="blue", alpha=0.2, label="Confidence Band")
+            plt.fill_between(impact["Period"], impact["Lower Bound"] - impact["Treated"], impact["Upper Bound"] - impact["Treated"], color="blue", alpha=0.2, label="Confidence Band")
         plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
 
         if self.training_end_date:
