@@ -31,7 +31,6 @@ class Staggered(BaseCausalInference):
         plt.axhline(0, color="black", linestyle="--", lw=2)
         plt.axvline(0, color="black", linestyle="-.", lw=2)
         plt.xlabel("Time Since Treatment Start")
-        plt.ylabel("Estimated Effect")
         plt.title(title)
         plt.legend()
         plt.tight_layout()
