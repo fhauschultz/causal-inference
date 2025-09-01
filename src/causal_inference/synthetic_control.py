@@ -99,8 +99,8 @@ class SyntheticControl(BaseCausalInference):
         impact["Effect"] = impact["Treated"] - impact["Synthetic Control"]
         if self.se_computed:
             impact = impact.join(self.se, how="left")
-            impact["Lower Bound"] = impact["Effect"] + impact["Lower Bound"]
-            impact["Upper Bound"] = impact["Effect"] + impact["Upper Bound"]
+            impact["Lower Bound"] = impact["Treated"] + impact["Lower Bound"]
+            impact["Upper Bound"] = impact["Treated"] + impact["Upper Bound"]
         return impact
 
     def _calculate_standard_errors(self, experiment_date, significance_level, prune_data):
