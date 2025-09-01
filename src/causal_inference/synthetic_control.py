@@ -221,6 +221,7 @@ class SyntheticControl(BaseCausalInference):
         Plot a histogram of the placebo effects.
         """
         treatment_effects = self.results[self.results > self.get_experiment_date()].mean()
+        plt.figure(figsize=(10, 6))
         plt.hist(self.placebo_effects.mean(1))
         plt.axvline(treatment_effects["Effect"], c="black", label="Treatment Effect")
         plt.legend()
