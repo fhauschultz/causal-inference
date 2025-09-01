@@ -349,16 +349,6 @@ class SyntheticControl(BaseCausalInference):
         )
         return avg
 
-    def summary(self):
-        """
-        Get a summary of the results.
-
-        Returns:
-        --------
-            pd.Series: Summary of the results.
-        """
-        return self.results[self.results > self.experiment_date].mean()
-
     def get_experiment_date(self):
         """
         Returns the experiment date for the treated unit(s) as a native Python type.
@@ -380,8 +370,9 @@ class SyntheticControl(BaseCausalInference):
         """
         Plot a histogram of the placebo effects.
         """
+        treatment_effects = self.results[self.results > self.experiment_date].mean()
         plt.hist(self.placebo_effects.mean(1))
-        plt.axvline(self.summary()["Effect"], c="black", label="Treatment Effect")
+        plt.axvline(treatment_effects["Effect"], c="black", label="Treatment Effect")
         plt.legend()
         plt.show()
 
