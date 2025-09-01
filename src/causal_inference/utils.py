@@ -83,8 +83,8 @@ class BaseCausalInference:
         covariates=None,
         model=None,
         cov_type="HC3",
-        matplotlib_style="classic",
-        matplotlib_theme_color="blue",
+        matplotlib_style="ggplot",
+        matplotlib_theme_color="navy",
     ):
         self.covariates = covariates
         self.time_col = time_col
