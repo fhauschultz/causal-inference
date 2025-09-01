@@ -65,14 +65,14 @@ class SyntheticControl(BaseCausalInference):
         outcome_data = self.data[[self.unit_col, self.time_col, self.value_col]]
         return outcome_data[outcome_data[self.unit_col] == treated_unit].pivot(index=self.time_col, columns=self.unit_col, values=self.value_col).iloc[:, 0]
 
-    def _get_results(self, treated_unit=None):
+    def _get_results_for_unit(self, treated_unit):
         """
         Get the results of the synthetic control method.
 
         Parameters:
         -----------
-            treated_unit: str, optional
-                Identifier for the treated unit. Defaults to None.
+            treated_unit: str
+                Identifier for the treated unit.
 
         Returns:
         --------
@@ -138,7 +138,7 @@ class SyntheticControl(BaseCausalInference):
                 self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
 
             # Store results
-            results[treated_unit] = self._get_results(treated_unit)
+            results[treated_unit] = self._get_results_for_unit(treated_unit)
 
         self.results = self.aggregate_results(results)
         self.model_fitted = True
