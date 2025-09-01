@@ -7,9 +7,6 @@ from sklearn.base import BaseEstimator, RegressorMixin
 
 from causal_inference.utils import BaseCausalInference
 
-# Set the style for matplotlib
-plt.style.use("https://github.com/dhaitz/matplotlib-stylesheets/raw/master/pitayasmoothie-light.mplstyle")
-
 
 class SyntheticControl(BaseCausalInference):
     def _fit_model(self, treated_unit, experiment_date, training_end_date=None):

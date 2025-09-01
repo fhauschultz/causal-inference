@@ -83,6 +83,7 @@ class BaseCausalInference:
         covariates=None,
         model=None,
         cov_type="HC3",
+        matplotlib_style="classic",
     ):
         self.covariates = covariates
         self.time_col = time_col
@@ -107,6 +108,6 @@ class BaseCausalInference:
         if self.model is not None and hasattr(self.model, "fit_intercept"):
             self.model.fit_intercept = False
 
-        plt.style.use("classic")
+        plt.style.use(matplotlib_style)
 
     def fit(self, calculate_se=False, significance_level=0.05, prune_data_for_se_computation=True): ...
