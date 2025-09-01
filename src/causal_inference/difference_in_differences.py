@@ -26,10 +26,10 @@ class Staggered(BaseCausalInference):
             raise ValueError("Model must be fitted before plotting effects.")
         effects = self.model_effects[self.value_col]
         plt.figure(figsize=(10, 6))
-        plt.plot(effects.index, effects["estimate"], label="Estimate", color=self.matplotlib_theme_color)
+        plt.plot(effects.index, effects["estimate"], label="Estimate", color=self.matplotlib_theme_color, lw=3)
         plt.fill_between(effects.index, effects["ci_lower"], effects["ci_upper"], color=self.matplotlib_theme_color, alpha=0.2, label="Error Band")
-        plt.axhline(0, color="black", linestyle="--")
-        plt.axvline(0, color="black", linestyle="-.")
+        plt.axhline(0, color="black", linestyle="--", lw=2)
+        plt.axvline(0, color="black", linestyle="-.", lw=2)
         plt.xlabel("Time Since Treatment Start")
         plt.ylabel("Estimated Effect")
         plt.title(title)
