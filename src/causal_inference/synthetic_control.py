@@ -211,6 +211,11 @@ class SyntheticControl(BaseCausalInference):
             # Multiple treated units or no treatment info
             return 0
 
+    def plot(self):
+        self.plot_treatment_control()
+        self.plot_effect()
+        self.plot_histogram()
+
     def plot_histogram(self):
         """
         Plot a histogram of the placebo effects.
@@ -221,7 +226,7 @@ class SyntheticControl(BaseCausalInference):
         plt.legend()
         plt.show()
 
-    def plot(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
+    def plot_treatment_control(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
         """
         Plot the treated unit and synthetic control.
 
