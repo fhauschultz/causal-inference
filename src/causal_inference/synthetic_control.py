@@ -99,6 +99,8 @@ class SyntheticControl(BaseCausalInference):
         impact["Effect"] = impact["Treated"] - impact["Synthetic Control"]
         if self.se_computed:
             impact = impact.join(self.se, how="left")
+            impact["Lower Bound"] = impact["Effect"] - impact["Lower Bound"]
+            impact["Upper Bound"] = impact["Effect"] + impact["Upper Bound"]
         return impact
 
     def _calculate_standard_errors(self, experiment_date, significance_level, prune_data):
@@ -131,7 +133,8 @@ class SyntheticControl(BaseCausalInference):
         placebo_effects_np = np.array(placebo_effects)
         upper_bound = np.percentile(placebo_effects_np, 100 - significance_level / 2, axis=1)
         lower_bound = np.percentile(placebo_effects_np, significance_level / 2, axis=1)
-        self.se = pd.DataFrame({"Upper Bound": upper_bound, "Lower Bound": lower_bound}, index=placebo_effects.index)
+        mean = np.mean(placebo_effects_np, axis=1)
+        self.se = pd.DataFrame({"Upper Bound": upper_bound - mean, "Lower Bound": lower_bound - mean}, index=placebo_effects.index)
 
         self.se_computed = True
         self.placebo_effects = placebo_effects
