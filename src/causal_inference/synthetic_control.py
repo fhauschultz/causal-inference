@@ -232,7 +232,7 @@ class SyntheticControl(BaseCausalInference):
         plt.plot(impact["Period"], impact["Treated"], label="Treated Unit", linestyle="-", color="blue", lw=3, alpha=0.8)
         plt.plot(impact["Period"], impact["Synthetic Control"], label="Synthetic Control", linestyle="--", color="black", lw=3, alpha=0.8)
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Synthetic Control"] + impact["Lower Bound"], impact["Synthetic Control"] + impact["Upper Bound"], color="grey", alpha=0.3, label="Confidence Band")
+            plt.fill_between(impact["Period"], impact["Synthetic Control"] + impact["Lower Bound"], impact["Synthetic Control"] + impact["Upper Bound"], color="blue", alpha=0.2, label="Confidence Band")
         plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
 
         if self.training_end_date:
