@@ -21,7 +21,7 @@ class Staggered(BaseCausalInference):
         self.model_fitted = True
         return self
 
-    def plot_effects_with_error_bands(self, title="Estimated Effect"):
+    def plot(self, title="Estimated Effect"):
         if not self.model_fitted:
             raise ValueError("Model must be fitted before plotting effects.")
         effects = self.model_effects[self.value_col]
