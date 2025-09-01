@@ -220,8 +220,8 @@ class SyntheticControl(BaseCausalInference):
         treatment_effects = self.results[self.results.Period > self.get_experiment_date()].mean()
         placebo_effects = self.placebo_effects[self.placebo_effects.index > self.get_experiment_date()]
         plt.figure(figsize=(10, 6))
-        plt.hist(placebo_effects.mean(0), color="blue", alpha=0.2)
-        plt.axvline(treatment_effects["Effect"], color="blue", label="Treatment Effect", linewidth=2)
+        plt.hist(placebo_effects.mean(0), color=self.matplotlib_theme_color, alpha=0.2)
+        plt.axvline(treatment_effects["Effect"], color=self.matplotlib_theme_color, label="Treatment Effect", linewidth=2)
         plt.legend()
         plt.show()
 
@@ -236,10 +236,10 @@ class SyntheticControl(BaseCausalInference):
 
         plt.figure(figsize=(10, 6))
         plt.title(self.value_col)
-        plt.plot(impact["Period"], impact["Treated"], label="Treated Unit", linestyle="-", color="blue", lw=3, alpha=0.8)
+        plt.plot(impact["Period"], impact["Treated"], label="Treated Unit", linestyle="-", color=self.matplotlib_theme_color, lw=3, alpha=0.8)
         plt.plot(impact["Period"], impact["Synthetic Control"], label="Synthetic Control", linestyle="--", color="black", lw=3, alpha=0.8)
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Lower Bound"], impact["Upper Bound"], color="blue", alpha=0.2, label="Confidence Band")
+            plt.fill_between(impact["Period"], impact["Lower Bound"], impact["Upper Bound"], color=self.matplotlib_theme_color, alpha=0.2, label="Confidence Band")
         plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
 
         if self.training_end_date:
@@ -260,9 +260,9 @@ class SyntheticControl(BaseCausalInference):
         impact = self.results
 
         plt.figure(figsize=(10, 6))
-        plt.plot(impact["Period"], impact["Effect"], label="Treated Unit", linestyle="-", color="blue", lw=3, alpha=0.8)
+        plt.plot(impact["Period"], impact["Effect"], label="Treated Unit", linestyle="-", color=self.matplotlib_theme_color, lw=3, alpha=0.8)
         if self.se_computed:
-            plt.fill_between(impact["Period"], impact["Lower Bound"] - impact["Treated"] + impact["Effect"], impact["Upper Bound"] - impact["Treated"] + impact["Effect"], color="blue", alpha=0.2, label="Confidence Band")
+            plt.fill_between(impact["Period"], impact["Lower Bound"] - impact["Treated"] + impact["Effect"], impact["Upper Bound"] - impact["Treated"] + impact["Effect"], color=self.matplotlib_theme_color, alpha=0.2, label="Confidence Band")
         plt.axvline(x=self.get_experiment_date(), color="gray", linestyle=":", label="Experiment Date", lw=2)
 
         if self.training_end_date:

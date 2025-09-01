@@ -84,6 +84,7 @@ class BaseCausalInference:
         model=None,
         cov_type="HC3",
         matplotlib_style="classic",
+        matplotlib_theme_color="blue",
     ):
         self.covariates = covariates
         self.time_col = time_col
@@ -109,5 +110,6 @@ class BaseCausalInference:
             self.model.fit_intercept = False
 
         plt.style.use(matplotlib_style)
+        self.matplotlib_theme_color = matplotlib_theme_color
 
     def fit(self, calculate_se=False, significance_level=0.05, prune_data_for_se_computation=True): ...
