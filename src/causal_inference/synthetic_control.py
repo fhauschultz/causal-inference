@@ -64,7 +64,7 @@ class SyntheticControl(BaseCausalInference):
         outcome_data = self.data[[self.unit_col, self.time_col, self.value_col]]
         return outcome_data[outcome_data[self.unit_col] == treated_unit].pivot(index=self.time_col, columns=self.unit_col, values=self.value_col).iloc[:, 0]
 
-    def _calculate_standard_errors(self, experiment_date, significance_level, prune_data):
+    def _calculate_standard_errors(self, significance_level, prune_data):
         """
         Calculate standard errors for the synthetic control method.
 
@@ -156,8 +156,8 @@ class SyntheticControl(BaseCausalInference):
     def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
         self.model = self.model if self.model is not None else ClassicModelFitter()
         self.results = self._fit_model(self.treatment, unit_col=self.unit_col)
-        # if calculate_se and self.treatment[self.unit_col].size == 1:
-        #    self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
+        if calculate_se and self.treatment[self.unit_col].size == 1:
+            self._calculate_standard_errors(significance_level, prune_data_for_se_computation)
         self.model_fitted = True
 
     def get_experiment_date(self):
