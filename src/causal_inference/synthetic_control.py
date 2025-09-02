@@ -1,3 +1,5 @@
+import itertools
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -75,14 +77,26 @@ class SyntheticControl(BaseCausalInference):
         --------
             pd.DataFrame: DataFrame containing the standard errors.
         """
+
+        def get_combinations(A, N):
+            combs = [list(c) for c in itertools.combinations(A, N)]
+            return combs
+
+        def get_placebo_treated_units_and_dates(n_treated):
+            combs = get_combinations(self.donors, n_treated, as_dataframe=True)
+            combs["treatment_start"] = sorted(self.treatment["treatment_start"].unique())
+            return combs
+
         tolerance_pre_treatment_pruning_pct = 10
         if not significance_level:
             significance_level = 5
         placebo_effects = []
-        for donor in self.donors:
-            synthetic_control, _ = self._fit_standard_synthetic_control(donor, experiment_date)
-            placebo_impact = self._get_treated_values(donor) - synthetic_control
-            placebo_effects.append(placebo_impact)
+        combs = get_combinations(self.donors, N=len(self.treatment))
+        treatment_start = self.treatment["treatment_start"].min()
+        for comb in combs:
+            placebo_treatment = pd.DataFrame({self.unit_col: comb, "treatment_start": [treatment_start] * len(comb)})
+            placebo_results = self._fit_model(placebo_treatment, self.unit_col)
+            placebo_effects.append(placebo_results["Effect"])
 
         placebo_effects = collect_series_to_dataframe(placebo_effects)
 
