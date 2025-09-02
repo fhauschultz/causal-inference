@@ -82,11 +82,6 @@ class SyntheticControl(BaseCausalInference):
             combs = [list(c) for c in itertools.combinations(A, N)]
             return combs
 
-        def get_placebo_treated_units_and_dates(n_treated):
-            combs = get_combinations(self.donors, n_treated, as_dataframe=True)
-            combs["treatment_start"] = sorted(self.treatment["treatment_start"].unique())
-            return combs
-
         tolerance_pre_treatment_pruning_pct = 10
         if not significance_level:
             significance_level = 5
@@ -96,7 +91,7 @@ class SyntheticControl(BaseCausalInference):
         for comb in combs:
             placebo_treatment = pd.DataFrame({self.unit_col: comb, "treatment_start": [treatment_start] * len(comb)})
             placebo_results = self._fit_model(placebo_treatment, self.unit_col)
-            placebo_effects.append(placebo_results["Effect"])
+            placebo_effects.append(placebo_results)
 
         placebo_effects = collect_series_to_dataframe(placebo_effects)
 
