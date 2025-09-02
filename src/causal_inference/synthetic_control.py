@@ -155,7 +155,7 @@ class SyntheticControl(BaseCausalInference):
             # Store results
             self.results_dict[treated_unit] = self._get_results_for_unit(treated_unit)
 
-        self.results = self.aggregate_results(self.results_dict, self.treatment, unit_col=self.unit_col)
+        self.results = compute_average_synthetic_control(self.results_dict, self.treatment, unit_col=self.unit_col)
         self.model_fitted = True
 
     def get_experiment_date(self):
@@ -429,7 +429,7 @@ def get_training_data(data, time_col, unit_col, value_col, treated_unit, experim
     return x_train_treated, x_train_donor
 
 
-def aggregate_results(results_dict, treatment_time, unit_col):
+def compute_average_synthetic_control(results_dict, treatment_time, unit_col):
     """
     Aggregate results by averaging the 'Effect', 'Synthetic Control', and 'Treated' across treated units,
     normalizing time to 'periods since treatment' if needed.
