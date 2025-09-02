@@ -80,13 +80,15 @@ def proposition_99_study_test_multiple_treated_units(sample_data):
 
     """
 
-    sample_data["status"] = 0
+    data_multiple_treated = sample_data.copy()
 
-    sample_data.loc[(sample_data["state"] == "California") & (sample_data["year"] >= 1988), "status"] = 1
-    sample_data.loc[(sample_data["state"] == "Alabama") & (sample_data["year"] >= 1990), "status"] = 1
+    data_multiple_treated["status"] = 0
+
+    data_multiple_treated.loc[(data_multiple_treated["state"] == "California") & (data_multiple_treated["year"] >= 1988), "status"] = 1
+    data_multiple_treated.loc[(data_multiple_treated["state"] == "Alabama") & (data_multiple_treated["year"] >= 1990), "status"] = 1
 
     synth = sc.SyntheticControl(
-        data=sample_data.sample(frac=1),
+        data=data_multiple_treated.sample(frac=1),
         unit_col="state",
         time_col="year",
         value_col="cigsale",
