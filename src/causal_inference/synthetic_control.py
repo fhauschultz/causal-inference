@@ -155,6 +155,8 @@ class SyntheticControl(BaseCausalInference):
         if calculate_se and self.treatment[self.unit_col].size == 1:
             self._calculate_standard_errors(significance_level, prune_data_for_se_computation)
             self.results = self.results.merge(self.se, on="Period", how="left")
+            self.results["Upper Bound"] = self.results["Upper Bound"] + self.results["Treated"]
+            self.results["Lower Bound"] = self.results["Lower Bound"] + self.results["Treated"]
         self.model_fitted = True
 
     def get_experiment_date(self):
