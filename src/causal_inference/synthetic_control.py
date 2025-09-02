@@ -132,8 +132,7 @@ class SyntheticControl(BaseCausalInference):
                 impact["Period"] = impact.index
 
             # Store results
-            results_pd = pd.concat([results_pd, impact], axis=1)
-            print(results_pd.columns)
+            results_pd = pd.concat([results_pd, impact], axis=0)
 
         avg = (
             results_pd.groupby("Period")
@@ -153,7 +152,7 @@ class SyntheticControl(BaseCausalInference):
     def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
         self.model = self.model if self.model is not None else ClassicModelFitter()
         self.results = self._fit_model(self.treatment, unit_col=self.unit_col)
-        if calculate_se and self.treatment[self.unit_col].size == 1:
+        if calculate_se:
             self._calculate_standard_errors(significance_level, prune_data_for_se_computation)
             self.results = self.results.merge(self.se, on="Period", how="left")
             self.results["Upper Bound"] = self.results["Upper Bound"] + self.results["Treated"]
