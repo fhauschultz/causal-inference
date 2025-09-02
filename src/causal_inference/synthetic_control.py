@@ -9,7 +9,7 @@ from causal_inference.utils import BaseCausalInference
 
 
 class SyntheticControl(BaseCausalInference):
-    def _fit_model(self, treated_unit, experiment_date, training_end_date=None):
+    def _fit_standard_synthetic_control(self, treated_unit, experiment_date, training_end_date=None):
         """
         Fit the model to the data.
 
@@ -118,7 +118,7 @@ class SyntheticControl(BaseCausalInference):
             significance_level = 5
         placebo_effects = []
         for donor in self.donors:
-            synthetic_control, _ = self._fit_model(donor, experiment_date)
+            synthetic_control, _ = self._fit_standard_synthetic_control(donor, experiment_date)
             placebo_impact = self._get_treated_values(donor) - synthetic_control
             placebo_effects.append(placebo_impact)
 
@@ -137,25 +137,51 @@ class SyntheticControl(BaseCausalInference):
         self.placebo_effects = placebo_effects
         return self.se
 
-    def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
-        self.model = self.model if self.model is not None else ClassicModelFitter()
-        self.results_dict = {}
-        self.synthetic_controls = {}
-        self.synthetic_weights = {}
-        for treated_unit in self.treatment[self.unit_col]:
-            experiment_date = self.treatment[self.treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
+    def _fit_model(self, treatment):
+        synthetic_controls = {}
+        synthetic_weights = {}
+        results_pd = pd.DataFrame()
+        n_treated = len(treatment)
+        for treated_unit in treatment:
+            experiment_date = treatment[treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
             training_end_date = self.training_end_date if self.training_end_date else experiment_date
 
             # Prepare data and fit the model
-            self.synthetic_controls[treated_unit], self.synthetic_weights[treated_unit] = self._fit_model(treated_unit, experiment_date, training_end_date)
+            synthetic_controls[treated_unit], synthetic_weights[treated_unit] = self._fit_standard_synthetic_control(treated_unit, experiment_date, training_end_date)
 
-            if calculate_se and self.treatment[self.unit_col].size == 1:
-                self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
+            impact = pd.DataFrame()
+            impact["Treated"] = self._get_treated_values(treated_unit)
+            impact["Synthetic Control"] = synthetic_controls[treated_unit]
+            impact["Effect"] = impact["Treated"] - impact["Synthetic Control"]
+
+            if n_treated > 1:
+                impact["Period"] = impact.index - experiment_date
+            else:
+                impact["Period"] = impact.index
 
             # Store results
-            self.results_dict[treated_unit] = self._get_results_for_unit(treated_unit)
+            results_pd = pd.concat([results_pd, impact], axis=1)
 
-        self.results = compute_average_synthetic_control(self.results_dict, self.treatment, unit_col=self.unit_col)
+        avg = (
+            results_pd.groupby("Period")
+            .agg(
+                Treated=("Treated", "mean"),
+                Synthetic_Control=("Synthetic Control", "mean"),
+                Effect=("Effect", "mean"),
+                Count=("Effect", "count"),  # or Treated/any col, same result if no NaNs
+            )
+            .reset_index()
+            .rename(columns={"Synthetic_Control": "Synthetic Control"})
+        )
+        avg = avg[avg["Count"] >= n_treated][["Period", "Treated", "Synthetic Control", "Effect"]]
+
+        return avg
+
+    def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
+        self.model = self.model if self.model is not None else ClassicModelFitter()
+        self.results = self._fit_model(self.results_dict, self.treatment, unit_col=self.unit_col)
+        # if calculate_se and self.treatment[self.unit_col].size == 1:
+        #    self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
         self.model_fitted = True
 
     def get_experiment_date(self):
@@ -429,38 +455,13 @@ def get_training_data(data, time_col, unit_col, value_col, treated_unit, experim
     return x_train_treated, x_train_donor
 
 
-def compute_average_synthetic_control(results_dict, treatment_time, unit_col):
+def compute_average_synthetic_control(result_df, n_treated):
     """
     Aggregate results by averaging the 'Effect', 'Synthetic Control', and 'Treated' across treated units,
     normalizing time to 'periods since treatment' if needed.
     Returns a DataFrame with columns: 'period', 'average_effect', 'average_synth', 'average_treated'.
     """
-    dfs = []
 
-    n_treated = len(results_dict)
-
-    for treated_unit, _df in results_dict.items():
-        df = _df.copy()
-        if n_treated > 1:
-            treat_time = treatment_time[treatment_time[unit_col] == treated_unit]["treatment_start"].iloc[0]
-            df["Period"] = df.index - treat_time
-        else:
-            df["Period"] = df.index
-            return df
-        dfs.append(df.reset_index(drop=True))
-    combined = pd.concat(dfs, ignore_index=True)
-    avg = (
-        combined.groupby("Period")
-        .agg(
-            Treated=("Treated", "mean"),
-            Synthetic_Control=("Synthetic Control", "mean"),
-            Effect=("Effect", "mean"),
-            Count=("Effect", "count"),  # or Treated/any col, same result if no NaNs
-        )
-        .reset_index()
-        .rename(columns={"Synthetic_Control": "Synthetic Control"})
-    )
-    avg = avg[avg["Count"] >= n_treated][["Period", "Treated", "Synthetic Control", "Effect"]]
     return avg
 
 
