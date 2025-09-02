@@ -460,7 +460,7 @@ def compute_average_synthetic_control(results_dict, treatment_time, unit_col):
         .reset_index()
         .rename(columns={"Synthetic_Control": "Synthetic Control"})
     )
-    avg = avg[avg["Count"] >= n_treated][["Period", "Treated", "Synthetic_Control", "Effect"]]
+    avg = avg[avg["Count"] >= n_treated][["Period", "Treated", "Synthetic Control", "Effect"]]
     return avg
 
 
