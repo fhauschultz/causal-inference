@@ -95,6 +95,7 @@ class SyntheticControl(BaseCausalInference):
         treatment_start = self.treatment["treatment_start"].min()
         for comb in combs:
             placebo_treatment = pd.DataFrame({self.unit_col: comb, "treatment_start": [treatment_start] * len(comb)})
+            print(placebo_treatment)
             placebo_results = self._fit_model(placebo_treatment, self.unit_col)
             placebo_effects.append(placebo_results["Effect"])
 
