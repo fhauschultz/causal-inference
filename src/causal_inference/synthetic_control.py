@@ -101,7 +101,7 @@ class SyntheticControl(BaseCausalInference):
         placebo_effects = collect_series_to_dataframe(placebo_effects)
 
         if prune_data:
-            placebo_effects = prune_units_for_se_computation(placebo_effects, experiment_date = treatment_start, tolerance_pre_treatment_pruning_pct)
+            placebo_effects = prune_units_for_se_computation(placebo_effects, treatment_start, tolerance_pre_treatment_pruning_pct)
 
         placebo_effects_np = np.array(placebo_effects)
         upper_bound = np.percentile(placebo_effects_np, 100 - significance_level / 2, axis=1)
