@@ -155,41 +155,8 @@ class SyntheticControl(BaseCausalInference):
             # Store results
             self.results_dict[treated_unit] = self._get_results_for_unit(treated_unit)
 
-        self.results = self.aggregate_results(self.results_dict)
+        self.results = self.aggregate_results(self.results_dict, self.treatment, unit_col=self.unit_col)
         self.model_fitted = True
-
-    def aggregate_results(self, results):
-        """
-        Aggregate results by averaging the 'Effect', 'Synthetic Control', and 'Treated' across treated units,
-        normalizing time to 'periods since treatment' if needed.
-        Returns a DataFrame with columns: 'period', 'average_effect', 'average_synth', 'average_treated'.
-        """
-        dfs = []
-        multi_treated = len(results) > 1
-
-        for treated_unit, _df in results.items():
-            df = _df.copy()
-            if multi_treated:
-                treat_time = self.treatment[self.treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
-                df["Period"] = df.index - treat_time
-            else:
-                df["Period"] = df.index
-                return df
-            dfs.append(df.reset_index(drop=True))
-        print(dfs)
-        combined = pd.concat(dfs, ignore_index=True)
-        avg = (
-            combined.groupby("Period")
-            .agg(
-                {
-                    "Treated": "mean",
-                    "Synthetic Control": "mean",
-                    "Effect": "mean",
-                }
-            )
-            .reset_index()
-        )
-        return avg
 
     def get_experiment_date(self):
         """
@@ -460,6 +427,40 @@ def get_training_data(data, time_col, unit_col, value_col, treated_unit, experim
     x_train_donor = np.concatenate(x_train_donor)
 
     return x_train_treated, x_train_donor
+
+
+def aggregate_results(results_dict, treatment_time, unit_col):
+    """
+    Aggregate results by averaging the 'Effect', 'Synthetic Control', and 'Treated' across treated units,
+    normalizing time to 'periods since treatment' if needed.
+    Returns a DataFrame with columns: 'period', 'average_effect', 'average_synth', 'average_treated'.
+    """
+    dfs = []
+    multi_treated = len(results_dict) > 1
+
+    for treated_unit, _df in results_dict.items():
+        print(treated_unit)
+        df = _df.copy()
+        if multi_treated:
+            treat_time = treatment_time[treatment_time[unit_col] == treated_unit]["treatment_start"].iloc[0]
+            df["Period"] = df.index - treat_time
+        else:
+            df["Period"] = df.index
+            return df
+        dfs.append(df.reset_index(drop=True))
+    combined = pd.concat(dfs, ignore_index=True)
+    avg = (
+        combined.groupby("Period")
+        .agg(
+            {
+                "Treated": "mean",
+                "Synthetic Control": "mean",
+                "Effect": "mean",
+            }
+        )
+        .reset_index()
+    )
+    return avg, combined
 
 
 def prepare_data(data, time_col, unit_col, value_col, treated_unit, experiment_date, training_end_date=None, covariates=None):
