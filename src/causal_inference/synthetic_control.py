@@ -154,6 +154,7 @@ class SyntheticControl(BaseCausalInference):
         self.results = self._fit_model(self.treatment, unit_col=self.unit_col)
         if calculate_se and self.treatment[self.unit_col].size == 1:
             self._calculate_standard_errors(significance_level, prune_data_for_se_computation)
+            print(self.se)
             self.results = self.results.join(self.se)
         self.model_fitted = True
 
