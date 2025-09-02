@@ -95,7 +95,6 @@ class SyntheticControl(BaseCausalInference):
         treatment_start = self.treatment["treatment_start"].min()
         for comb in combs:
             placebo_treatment = pd.DataFrame({self.unit_col: comb, "treatment_start": [treatment_start] * len(comb)})
-            print(placebo_treatment)
             placebo_results = self._fit_model(placebo_treatment, self.unit_col)
             placebo_effects.append(placebo_results["Effect"])
 
@@ -104,6 +103,7 @@ class SyntheticControl(BaseCausalInference):
         if prune_data:
             placebo_effects = prune_units_for_se_computation(placebo_effects, treatment_start, tolerance_pre_treatment_pruning_pct)
 
+        print(placebo_effects)
         placebo_effects_np = np.array(placebo_effects)
         upper_bound = np.percentile(placebo_effects_np, 100 - significance_level / 2, axis=1)
         lower_bound = np.percentile(placebo_effects_np, significance_level / 2, axis=1)
