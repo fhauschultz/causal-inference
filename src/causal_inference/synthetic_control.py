@@ -167,8 +167,8 @@ class SyntheticControl(BaseCausalInference):
         dfs = []
         multi_treated = len(results) > 1
 
-        for treated_unit, df in results.items():
-            df = df.copy()
+        for treated_unit, _df in results.items():
+            df = _df.copy()
             if multi_treated:
                 treat_time = self.treatment[self.treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
                 df["Period"] = df.index - treat_time
@@ -176,7 +176,7 @@ class SyntheticControl(BaseCausalInference):
                 df["Period"] = df.index
                 return df
             dfs.append(df.reset_index(drop=True))
-
+        print(dfs)
         combined = pd.concat(dfs, ignore_index=True)
         avg = (
             combined.groupby("Period")
