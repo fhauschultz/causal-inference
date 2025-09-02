@@ -440,7 +440,6 @@ def compute_average_synthetic_control(results_dict, treatment_time, unit_col):
     n_treated = len(results_dict)
 
     for treated_unit, _df in results_dict.items():
-        print(treated_unit)
         df = _df.copy()
         if n_treated > 1:
             treat_time = treatment_time[treatment_time[unit_col] == treated_unit]["treatment_start"].iloc[0]
