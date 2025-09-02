@@ -99,13 +99,13 @@ class SyntheticControl(BaseCausalInference):
         self.placebo_effects = placebo_effects
         return self.se
 
-    def _fit_model(self, treatment):
+    def _fit_model(self, treatment, unit_col):
         synthetic_controls = {}
         synthetic_weights = {}
         results_pd = pd.DataFrame()
         n_treated = len(treatment)
         for treated_unit in treatment:
-            experiment_date = treatment[treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
+            experiment_date = treatment[treatment[unit_col] == treated_unit]["treatment_start"].iloc[0]
             training_end_date = self.training_end_date if self.training_end_date else experiment_date
 
             # Prepare data and fit the model
@@ -141,7 +141,7 @@ class SyntheticControl(BaseCausalInference):
 
     def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
         self.model = self.model if self.model is not None else ClassicModelFitter()
-        self.results = self._fit_model(self.results_dict, self.treatment, unit_col=self.unit_col)
+        self.results = self._fit_model(self.treatment, unit_col=self.unit_col)
         # if calculate_se and self.treatment[self.unit_col].size == 1:
         #    self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
         self.model_fitted = True
