@@ -431,16 +431,6 @@ def get_training_data(data, time_col, unit_col, value_col, treated_unit, experim
     return x_train_treated, x_train_donor
 
 
-def compute_average_synthetic_control(result_df, n_treated):
-    """
-    Aggregate results by averaging the 'Effect', 'Synthetic Control', and 'Treated' across treated units,
-    normalizing time to 'periods since treatment' if needed.
-    Returns a DataFrame with columns: 'period', 'average_effect', 'average_synth', 'average_treated'.
-    """
-
-    return avg
-
-
 def prepare_data(data, time_col, unit_col, value_col, treated_unit, experiment_date, training_end_date=None, covariates=None):
     """
     Prepare data for fitting the model by combining training and inference data extraction.
