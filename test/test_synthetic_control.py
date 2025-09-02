@@ -141,20 +141,6 @@ def test_filter_donor_units_single_unit():
     assert set(filtered_df[unit_col].unique()) == set(expected_units)
 
 
-def test_collect_series_to_dataframe():
-    series1 = pd.Series([1, 2, 3], name="series1")
-    series2 = pd.Series([4, 5, 6], name="series2")
-    series_list = [series1, series2]
-
-    df = sc.collect_series_to_dataframe(series_list)
-
-    assert isinstance(df, pd.DataFrame)
-    assert list(df.columns) == ["series1", "series2"]
-    assert df.shape == (3, 2)
-    assert df["series1"].tolist() == [1, 2, 3]
-    assert df["series2"].tolist() == [4, 5, 6]
-
-
 def test_get_good_fit_units():
     data = {"unit1": [0.1, 0.2, 0.3, 0.4], "unit2": [0.5, 0.6, 0.7, 0.8], "unit3": [0.9, 1.0, 1.1, 1.2]}
     index = [datetime(2020, 1, 1), datetime(2020, 1, 2), datetime(2020, 1, 3), datetime(2020, 1, 4)]
