@@ -96,7 +96,6 @@ class SyntheticControl(BaseCausalInference):
             placebo_effects.append(placebo_results[["Period", "Effect"]].rename(columns={"Effect": str(i)}).set_index("Period"))
 
         placebo_effects = pd.concat(placebo_effects, axis=1)
-
         if prune_data:
             placebo_effects = prune_units_for_se_computation(placebo_effects, treatment_start, tolerance_pre_treatment_pruning_pct)
 
