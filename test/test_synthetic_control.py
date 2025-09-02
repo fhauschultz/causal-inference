@@ -87,7 +87,7 @@ def proposition_99_study_test_multiple_treated_units(sample_data):
     data_multiple_treated.loc[(data_multiple_treated["state"] == "California") & (data_multiple_treated["year"] >= 1988), "status"] = 1
     data_multiple_treated.loc[(data_multiple_treated["state"] == "Alabama") & (data_multiple_treated["year"] >= 1990), "status"] = 1
 
-    synth = sc.SyntheticControl(
+    synth_multiple = sc.SyntheticControl(
         data=data_multiple_treated.sample(frac=1),
         unit_col="state",
         time_col="year",
@@ -96,13 +96,13 @@ def proposition_99_study_test_multiple_treated_units(sample_data):
         covariates=["retprice"],
     )
 
-    synth.fit(calculate_se=False)
+    synth_multiple.fit(calculate_se=False)
 
-    assert np.isclose(np.mean(synth.weights.values), 0.026316)
-    assert np.isclose(np.max(synth.weights.values), 0.432629)
-    assert np.isclose(np.min(synth.weights.values), 0.0)
-    assert np.isclose(np.median(synth.weights.values), 8.881438853501265e-15)
-    assert np.isclose(np.std(synth.weights.values), 0.0816086593196616)
+    assert np.isclose(np.mean(synth_multiple.weights.values), 0.026316)
+    assert np.isclose(np.max(synth_multiple.weights.values), 0.432629)
+    assert np.isclose(np.min(synth_multiple.weights.values), 0.0)
+    assert np.isclose(np.median(synth_multiple.weights.values), 8.881438853501265e-15)
+    assert np.isclose(np.std(synth_multiple.weights.values), 0.0816086593196616)
 
 
 def test_filter_donor_units_no_matching_units():
