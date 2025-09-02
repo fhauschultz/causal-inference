@@ -133,6 +133,7 @@ class SyntheticControl(BaseCausalInference):
 
             # Store results
             results_pd = pd.concat([results_pd, impact], axis=1)
+            print(results_pd.columns)
 
         avg = (
             results_pd.groupby("Period")
