@@ -458,6 +458,7 @@ def compute_average_synthetic_control(results_dict, treatment_time, unit_col):
             Count=("Effect", "count"),  # or Treated/any col, same result if no NaNs
         )
         .reset_index()
+        .withColumnRenamed("Synthetic_Control", "Synthetic Control")
     )
     avg = avg[avg["Count"] >= n_treated][["Period", "Treated", "Synthetic_Control", "Effect"]]
     return avg
