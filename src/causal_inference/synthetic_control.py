@@ -104,7 +104,7 @@ class SyntheticControl(BaseCausalInference):
         upper_bound = np.percentile(placebo_effects_np, 100 - significance_level / 2, axis=1)
         lower_bound = np.percentile(placebo_effects_np, significance_level / 2, axis=1)
         mean = np.mean(placebo_effects_np, axis=1)
-        self.se = pd.DataFrame({"Upper Bound": upper_bound - mean, "Lower Bound": lower_bound - mean}, index=placebo_effects.index)
+        self.se = pd.DataFrame({"Upper Bound": upper_bound - mean, "Lower Bound": lower_bound - mean}, index=placebo_effects.index).reset_index()
         self.se_computed = True
         self.placebo_effects = placebo_effects
         return self.se
@@ -154,8 +154,7 @@ class SyntheticControl(BaseCausalInference):
         self.results = self._fit_model(self.treatment, unit_col=self.unit_col)
         if calculate_se and self.treatment[self.unit_col].size == 1:
             self._calculate_standard_errors(significance_level, prune_data_for_se_computation)
-            print(self.se)
-            self.results = self.results.join(self.se)
+            self.results = self.results.merge(self.se, on="Period", how="left")
         self.model_fitted = True
 
     def get_experiment_date(self):
