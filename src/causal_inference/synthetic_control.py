@@ -436,12 +436,13 @@ def aggregate_results(results_dict, treatment_time, unit_col):
     Returns a DataFrame with columns: 'period', 'average_effect', 'average_synth', 'average_treated'.
     """
     dfs = []
-    multi_treated = len(results_dict) > 1
+
+    n_treated = len(results_dict)
 
     for treated_unit, _df in results_dict.items():
         print(treated_unit)
         df = _df.copy()
-        if multi_treated:
+        if n_treated > 1:
             treat_time = treatment_time[treatment_time[unit_col] == treated_unit]["treatment_start"].iloc[0]
             df["Period"] = df.index - treat_time
         else:
@@ -452,14 +453,14 @@ def aggregate_results(results_dict, treatment_time, unit_col):
     avg = (
         combined.groupby("Period")
         .agg(
-            {
-                "Treated": "mean",
-                "Synthetic Control": "mean",
-                "Effect": "mean",
-            }
+            Treated=("Treated", "mean"),
+            Synthetic_Control=("Synthetic Control", "mean"),
+            Effect=("Effect", "mean"),
+            Count=("Effect", "count"),  # or Treated/any col, same result if no NaNs
         )
         .reset_index()
     )
+    avg = avg[avg["Count"] >= n_treated][["Period", "Treated", "Synthetic_Control", "Effect"]]
     return avg, combined
 
 
