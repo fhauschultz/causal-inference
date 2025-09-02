@@ -88,12 +88,14 @@ class SyntheticControl(BaseCausalInference):
         placebo_effects = []
         combs = get_combinations(self.donors, N=len(self.treatment))
         treatment_start = self.treatment["treatment_start"].min()
+        i = 0
         for comb in combs:
+            i += 1
             placebo_treatment = pd.DataFrame({self.unit_col: comb, "treatment_start": [treatment_start] * len(comb)})
             placebo_results = self._fit_model(placebo_treatment, self.unit_col)
-            placebo_effects.append(placebo_results)
+            placebo_effects.append(placebo_results[["Period", "Effect"]].rename(columns={"Effect": str(i)}).set_index("Period"))
 
-        placebo_effects = collect_series_to_dataframe(placebo_effects)
+        placebo_effects = pd.concat(placebo_effects, axis=1)
 
         if prune_data:
             placebo_effects = prune_units_for_se_computation(placebo_effects, treatment_start, tolerance_pre_treatment_pruning_pct)
@@ -103,7 +105,6 @@ class SyntheticControl(BaseCausalInference):
         lower_bound = np.percentile(placebo_effects_np, significance_level / 2, axis=1)
         mean = np.mean(placebo_effects_np, axis=1)
         self.se = pd.DataFrame({"Upper Bound": upper_bound - mean, "Lower Bound": lower_bound - mean}, index=placebo_effects.index)
-
         self.se_computed = True
         self.placebo_effects = placebo_effects
         return self.se
@@ -153,6 +154,7 @@ class SyntheticControl(BaseCausalInference):
         self.results = self._fit_model(self.treatment, unit_col=self.unit_col)
         if calculate_se and self.treatment[self.unit_col].size == 1:
             self._calculate_standard_errors(significance_level, prune_data_for_se_computation)
+            self.results = self.results.join(self.se)
         self.model_fitted = True
 
     def get_experiment_date(self):
@@ -497,11 +499,6 @@ class ClassicModelFitter(BaseEstimator, RegressorMixin):
 
     def predict(self, x):
         return x @ self.coef_
-
-
-def collect_series_to_dataframe(series_list):
-    df = pd.DataFrame({s.name: s for s in series_list})
-    return df
 
 
 def get_good_fit_units(effects, index_threshold, tolerance_pct):
