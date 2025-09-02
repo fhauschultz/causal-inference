@@ -93,6 +93,8 @@ class SyntheticControl(BaseCausalInference):
             placebo_results = self._fit_model(placebo_treatment, self.unit_col)
             placebo_effects.append(placebo_results)
 
+        print(placebo_results)
+
         placebo_effects = collect_series_to_dataframe(placebo_effects)
 
         if prune_data:
