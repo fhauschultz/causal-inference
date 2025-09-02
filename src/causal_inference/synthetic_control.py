@@ -139,7 +139,7 @@ class SyntheticControl(BaseCausalInference):
 
     def fit(self, calculate_se=True, significance_level=None, prune_data_for_se_computation=True):
         self.model = self.model if self.model is not None else ClassicModelFitter()
-        results = {}
+        self.results_dict = {}
         self.synthetic_controls = {}
         self.synthetic_weights = {}
         for treated_unit in self.treatment[self.unit_col]:
@@ -153,9 +153,9 @@ class SyntheticControl(BaseCausalInference):
                 self._calculate_standard_errors(experiment_date, significance_level, prune_data_for_se_computation)
 
             # Store results
-            results[treated_unit] = self._get_results_for_unit(treated_unit)
+            self.results_dict[treated_unit] = self._get_results_for_unit(treated_unit)
 
-        self.results = self.aggregate_results(results)
+        self.results = self.aggregate_results(self.results_dict)
         self.model_fitted = True
 
     def aggregate_results(self, results):
