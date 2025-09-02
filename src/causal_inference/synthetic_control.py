@@ -170,7 +170,7 @@ class SyntheticControl(BaseCausalInference):
         for treated_unit, df in results.items():
             df = df.copy()
             if multi_treated:
-                treat_time = self.treatment[treated_unit]
+                treat_time = self.treatment[self.treatment[self.unit_col] == treated_unit]["treatment_start"].iloc[0]
                 df["Period"] = df.index - treat_time
             else:
                 df["Period"] = df.index
