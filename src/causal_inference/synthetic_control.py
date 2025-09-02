@@ -104,7 +104,7 @@ class SyntheticControl(BaseCausalInference):
         synthetic_weights = {}
         results_pd = pd.DataFrame()
         n_treated = len(treatment)
-        for treated_unit in treatment:
+        for treated_unit in treatment[unit_col].unique():
             experiment_date = treatment[treatment[unit_col] == treated_unit]["treatment_start"].iloc[0]
             training_end_date = self.training_end_date if self.training_end_date else experiment_date
 
