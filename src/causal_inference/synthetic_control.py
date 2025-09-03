@@ -11,8 +11,8 @@ from causal_inference.utils import BaseCausalInference
 
 
 class SyntheticControl(BaseCausalInference):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         # using only donor units that have as many observations as the treated unit
         self.data = filter_donor_units(self.data.copy(deep=False), self.treatment, self.unit_col)
 
