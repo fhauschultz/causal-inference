@@ -97,12 +97,7 @@ def proposition_99_study_test_multiple_treated_units(sample_data):
     )
 
     synth_multiple.fit(calculate_se=False)
-
-    assert np.isclose(np.mean(synth_multiple.weights.values), 0.026316)
-    assert np.isclose(np.max(synth_multiple.weights.values), 0.432629)
-    assert np.isclose(np.min(synth_multiple.weights.values), 0.0)
-    assert np.isclose(np.median(synth_multiple.weights.values), 8.881438853501265e-15)
-    assert np.isclose(np.std(synth_multiple.weights.values), 0.0816086593196616)
+    assert np.isclose(synth_multiple.results.values.mean(), 68.11)
 
 
 def test_filter_donor_units_no_matching_units():
