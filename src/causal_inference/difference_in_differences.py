@@ -9,7 +9,7 @@ from scipy.stats import t
 from causal_inference.utils import BaseCausalInference
 
 
-class Staggered(BaseCausalInference):
+class StaggeredDID(BaseCausalInference):
     def fit(self, significance_level=0.1):
         self.models = {}
         self.model_effects = {}

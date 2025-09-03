@@ -52,7 +52,7 @@ def generated_staggered_treatment_data(treatment_effect=3):
 def test_staggered_treatment_effect_close_to_truth():
     treatment_effect = 3
     data = generated_staggered_treatment_data(treatment_effect=treatment_effect)
-    model = did.Staggered(data=data, unit_col="unit", time_col="time", value_col="outcome", treatment="treated", covariates=None, cov_type="HC3").fit()
+    model = did.StaggeredDID(data=data, unit_col="unit", time_col="time", value_col="outcome", treatment="treated", covariates=None, cov_type="HC3").fit()
     # Only check post-treatment event times (event_time >= 0)
     effects = model.model_effects["outcome"]
     post_effects = effects[effects.index >= 0]["estimate"]
