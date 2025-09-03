@@ -11,6 +11,11 @@ from causal_inference.utils import BaseCausalInference
 
 
 class SyntheticControl(BaseCausalInference):
+    def __init__(self):
+        super().__init__()
+        # using only donor units that have as many observations as the treated unit
+        self.data = filter_donor_units(self.data.copy(deep=False), self.treatment, self.unit_col)
+
     def _fit_standard_synthetic_control(self, treated_unit, experiment_date, training_end_date=None):
         """
         Fit the model to the data.
