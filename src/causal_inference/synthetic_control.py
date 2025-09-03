@@ -175,7 +175,7 @@ class SyntheticControl(BaseCausalInference):
             # Multiple treated units or no treatment info
             return 0
 
-    def plot(self, layout="row", figsize=None, **kwargs):
+    def plot(self, layout="row", figsize=None):
         """
         Create a single figure with subplots for:
         1) Treated vs Synthetic Control
@@ -188,8 +188,6 @@ class SyntheticControl(BaseCausalInference):
             Arrange subplots horizontally ("row") or vertically ("col").
         figsize : tuple, optional
             Figure size passed to plt.subplots(). If None, picks a good default.
-        **kwargs :
-            Extra kwargs forwarded to the individual plot_* methods if needed.
 
         Returns
         -------
@@ -207,13 +205,13 @@ class SyntheticControl(BaseCausalInference):
         axes = axes.ravel()
 
         # 1) Treated vs Synthetic Control
-        self.plot_treatment_control(ax=axes[0], **kwargs)
+        self.plot_treatment_control(ax=axes[0])
 
         # 2) Effect
-        self.plot_effect(ax=axes[1], **kwargs)
+        self.plot_effect(ax=axes[1])
 
         # 3) Placebo-effects Histogram
-        self.plot_histogram(ax=axes[2], **kwargs)
+        self.plot_histogram(ax=axes[2])
 
         plt.tight_layout()
         return fig, axes
