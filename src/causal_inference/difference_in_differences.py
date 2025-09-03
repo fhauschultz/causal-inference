@@ -24,12 +24,12 @@ class Staggered(BaseCausalInference):
     def plot(
         self,
         figsize=None,
-        matplotlib_style="navy",
-        matplotlib_theme_color="ggplot",
+        matplotlib_style="ggplot",
+        matplotlib_theme_color="navy",
     ):
         self.matplotlib_style = matplotlib_style
         self.matplotlib_theme_color = matplotlib_theme_color
-        plt.style.use(self.matplotlib_theme_color)
+        plt.style.use(self.matplotlib_style)
         title = "Estimated Effect"
         if not self.model_fitted:
             raise ValueError("Model must be fitted before plotting effects.")
