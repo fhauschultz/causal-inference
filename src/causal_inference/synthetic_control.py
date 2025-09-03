@@ -175,7 +175,13 @@ class SyntheticControl(BaseCausalInference):
             # Multiple treated units or no treatment info
             return 0
 
-    def plot(self, layout="row", figsize=None):
+    def plot(
+        self,
+        layout="row",
+        figsize=None,
+        matplotlib_style="ggplot",
+        matplotlib_theme_color="navy",
+    ):
         """
         Create a single figure with subplots for:
         1) Treated vs Synthetic Control
@@ -194,6 +200,9 @@ class SyntheticControl(BaseCausalInference):
         fig : matplotlib.figure.Figure
         axes : np.ndarray of matplotlib.axes.Axes (length 3)
         """
+        self.matplotlib_theme_color = matplotlib_theme_color
+        self.matplotlib_style = matplotlib_style
+
         if layout not in {"row", "col"}:
             layout = "row"
 
