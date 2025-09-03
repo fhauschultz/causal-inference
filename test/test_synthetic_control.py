@@ -103,7 +103,7 @@ def proposition_99_study_test_multiple_treated_units(sample_data):
 def test_filter_donor_units_no_matching_units():
     data = {"UNITS": ["A", "A", "B", "B", "C", "C", "C"], "TIME": [1, 2, 1, 2, 1, 2, 3], "VAR": [10, 20, 10, 20, 10, 20, 30]}
     df = pd.DataFrame(data)
-    treatment_unit = "C"
+    treatment_unit = pd.DataFrame({"UNITS": ["C"], "TIME": [1]})
     unit_col = "UNITS"
 
     filtered_df = sc.filter_donor_units(df, treatment_unit, unit_col)
@@ -115,7 +115,7 @@ def test_filter_donor_units_no_matching_units():
 def test_filter_donor_units_all_units_match():
     data = {"UNITS": ["A", "A", "B", "B", "C", "C"], "TIME": [1, 2, 1, 2, 1, 2], "VAR": [10, 20, 10, 20, 10, 20]}
     df = pd.DataFrame(data)
-    treatment_unit = "A"
+    treatment_unit = pd.DataFrame({"UNITS": ["A"], "TIME": [1]})
     unit_col = "UNITS"
 
     filtered_df = sc.filter_donor_units(df, treatment_unit, unit_col)
@@ -127,7 +127,7 @@ def test_filter_donor_units_all_units_match():
 def test_filter_donor_units_single_unit():
     data = {"UNITS": ["A", "A"], "TIME": [1, 2], "VAR": [10, 20]}
     df = pd.DataFrame(data)
-    treatment_unit = "A"
+    treatment_unit = pd.DataFrame({"UNITS": ["A"], "TIME": [1]})
     unit_col = "UNITS"
 
     filtered_df = sc.filter_donor_units(df, treatment_unit, unit_col)
