@@ -452,7 +452,7 @@ def prepare_data(data, time_col, unit_col, value_col, treated_unit, experiment_d
     return x_train_treated, x_train_donor, x_outcome_treated, x_outcome_donor, donor_units
 
 
-def filter_donor_units(df, treatment_unit, unit_col):
+def filter_donor_units(df, treatment, unit_col):
     """
     Filter a DataFrame to retain only donor units (and the treated unit) that have the same number
     of observations as the treatment unit.
@@ -475,7 +475,7 @@ def filter_donor_units(df, treatment_unit, unit_col):
     unit_counts = df.groupby(unit_col).size()
 
     # Get the number of observations for the treatment unit
-    treatment_count = unit_counts[treatment_unit]
+    treatment_count = unit_counts[unit_counts.index.isin(treatment[unit_col])].max()
 
     # Identify donor units with matching counts
     matching_units = unit_counts[unit_counts >= treatment_count].index
