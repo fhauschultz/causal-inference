@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
@@ -106,8 +105,5 @@ class BaseCausalInference:
 
         if self.model is not None and hasattr(self.model, "fit_intercept"):
             self.model.fit_intercept = False
-
-        plt.style.use(matplotlib_style)
-        self.matplotlib_theme_color = matplotlib_theme_color
 
     def fit(self, calculate_se=False, significance_level=0.05, prune_data_for_se_computation=True): ...
