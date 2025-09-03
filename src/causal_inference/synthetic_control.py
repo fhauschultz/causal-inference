@@ -191,7 +191,7 @@ class SyntheticControl(BaseCausalInference):
         Parameters
         ----------
         layout : {"row","col"}, optional
-            Arrange subplots horizontally ("row") or vertically ("col").
+            Arrange subplots horizontally ("row") or vertically ("col ").
         figsize : tuple, optional
             Figure size passed to plt.subplots(). If None, picks a good default.
 
@@ -202,6 +202,8 @@ class SyntheticControl(BaseCausalInference):
         """
         self.matplotlib_theme_color = matplotlib_theme_color
         self.matplotlib_style = matplotlib_style
+
+        plt.style.use(self.matplotlib_style)
 
         if layout not in {"row", "col"}:
             layout = "row"
