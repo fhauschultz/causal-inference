@@ -24,8 +24,8 @@ class Staggered(BaseCausalInference):
     def plot(
         self,
         figsize=None,
-        matplotlib_style="ggplot",
-        matplotlib_theme_color="navy",
+        matplotlib_style="navy",
+        matplotlib_theme_color="ggplot",
     ):
         self.matplotlib_style = matplotlib_style
         self.matplotlib_theme_color = matplotlib_theme_color
