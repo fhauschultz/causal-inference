@@ -57,4 +57,4 @@ def test_staggered_treatment_effect_close_to_truth():
     effects = model.model_effects["outcome"]
     post_effects = effects[effects.index >= 0]["estimate"]
     assert np.allclose(post_effects, treatment_effect, atol=0.5)
-    model.plot(title="Estimated Effect with Staggered Treatment")
+    model.plot()
