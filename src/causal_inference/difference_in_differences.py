@@ -2,7 +2,6 @@ import re
 
 import linearmodels as lm
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
@@ -47,7 +46,7 @@ class StaggeredDID(BaseCausalInference):
         plt.show()
 
 
-def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
+def conf_int_robust(model, alpha=0.05, **cov_kwds):
     """
     Compute confidence intervals using specified covariance type, including heteroscedasticity-robust standard errors.
 
@@ -60,11 +59,6 @@ def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
     Returns:
     - DataFrame containing the lower and upper bounds of the confidence intervals.
     """
-    # Handle non-robust covariance explicitly
-    if cov_type == "nonrobust":
-        robust_cov = model.cov_params()
-    else:
-        robust_cov = model.get_robustcov_results(cov_type=cov_type, **cov_kwds).cov_params()
 
     t_value = norm.ppf(1 - alpha / 2)
 
@@ -73,8 +67,6 @@ def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
     res = pd.concat([model.params, model.std_errors], axis=1)
     # Scale standard error to 95% CI
     res["ci"] = res["std_error"] * t_value
-
-    robust_se = np.sqrt(np.diag(robust_cov))
 
     # Compute confidence intervals
     ci_lower = params - res["ci"]
