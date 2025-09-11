@@ -155,5 +155,5 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     model = lm.PanelOLS(y, X, entity_effects=True, time_effects=True)
     fit = model.fit(cov_type="clustered", cluster_entity=True)
 
-    estimates = extract_staggered_treatment_effect(model, alpha=alpha, reference_period=reference_period)
+    estimates = extract_staggered_treatment_effect(fit, alpha=alpha, reference_period=reference_period)
     return model, df, estimates
