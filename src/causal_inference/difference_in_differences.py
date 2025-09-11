@@ -148,11 +148,11 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     if covariates:
         X = X.join(df[covariates].astype(float))
     # X = sm.add_constant(X)
-    y = df[outcome_col].astype(float)
+    y = df[[unit_col, time_col, outcome_col]].set_index([unit_col, time_col])
+    y[outcome_col] = y[outcome_col].astype(float)
+    X = X.set_index([unit_col, time_col])
 
-    print(X.set_index([unit_col, time_col]))
-
-    model = lm.PanelOLS(y, X.set_index([unit_col, time_col]), entity_effects=True, time_effects=True)
+    model = lm.PanelOLS(y, X, entity_effects=True, time_effects=True)
     fit = model.fit(cov_type="clustered", cluster_entity=True)
 
     estimates = extract_staggered_treatment_effect(model, alpha=alpha, reference_period=reference_period)
