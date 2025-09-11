@@ -5,8 +5,6 @@ import pytest
 import causal_inference.difference_in_differences as did
 
 
-def sample_data():
-    
 @pytest.fixture
 def sample_data():
     data = pd.read_json(
@@ -74,7 +72,7 @@ def test_staggered_treatment_effect_close_to_truth():
 
 
 def test_staggered_treatment_on_example(sample_data):
-    sample_data['treated'] = (sample_data['year']>=sample_data['_nfd']).fillna(0)
-    diff_in_diff = did.StaggeredDID(sample_data, unit_col = 'stfips', time_col = 'year', value_col = 'asmrs', treatment = 'treated', covariates = ['pcinc','cases','asmrh'])
+    sample_data["treated"] = (sample_data["year"] >= sample_data["_nfd"]).fillna(0)
+    diff_in_diff = did.StaggeredDID(sample_data, unit_col="stfips", time_col="year", value_col="asmrs", treatment="treated", covariates=["pcinc", "cases", "asmrh"])
 
-    assert float(diff_in_diff.model_effects['asmrs'].loc[1]['estimate']) == -1.619351
+    assert float(diff_in_diff.model_effects["asmrs"].loc[1]["estimate"]) == -1.619351
