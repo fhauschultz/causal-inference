@@ -4,7 +4,7 @@ import linearmodels as lm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.stats import t
+from scipy.stats import norm
 
 from causal_inference.utils import BaseCausalInference
 
@@ -66,17 +66,19 @@ def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
     else:
         robust_cov = model.get_robustcov_results(cov_type=cov_type, **cov_kwds).cov_params()
 
+    t_value = norm.ppf(1 - alpha / 2)
+
     # Extract parameter estimates and standard errors.
     params = model.params
+    res = pd.concat([model.params, model.std_errors], axis=1)
+    # Scale standard error to 95% CI
+    res["ci"] = res["std_error"] * t_value
+
     robust_se = np.sqrt(np.diag(robust_cov))
 
-    # Compute critical t-value based on alpha and degrees of freedom
-    df_resid = model.df_resid
-    t_value = t.ppf(1 - alpha / 2, df_resid)
-
     # Compute confidence intervals
-    ci_lower = params - t_value * robust_se
-    ci_upper = params + t_value * robust_se
+    ci_lower = params - res["ci"]
+    ci_upper = params + res["ci"]
 
     return pd.DataFrame({"lower": ci_lower, "upper": ci_upper})
 
