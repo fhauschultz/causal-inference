@@ -70,9 +70,7 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     df = data.copy()
     # Calculate periods since treatment start (NaN for never-treated)
     df["periods_since_treatment"] = df[time_col] - df[treatment_start_col]
-    # Indicator for post-treatment period (0 if never treated or pre-treatment)
-    df["treated"] = (df["periods_since_treatment"] >= 0) & (~df[treatment_start_col].isna())
-    df["treated"] = df["treated"].astype(int)
+    df["periods_since_treatment"] = df["periods_since_treatment"].fillna(0)
 
     # Optionally, create event-time dummies for dynamic effects
     event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float, drop_first=True)
