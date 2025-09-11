@@ -53,7 +53,7 @@ def conf_int(model, alpha=0.05):
     Parameters:
     - model: A fitted statsmodels regression model (e.g., OLS).
     - alpha: Significance level for the confidence interval (default is 0.05 for 95% CI).
-    - cov_type: The covariance type (e.g., 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3').
+    - : The covariance type (e.g., 'nonrobust', 'HC0', 'HC1', 'HC2', 'HC3').
     - cov_kwds: Additional arguments for robust covariance calculation.
 
     Returns:
