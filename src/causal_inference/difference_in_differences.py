@@ -75,7 +75,7 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     df["treated"] = df["treated"].astype(int)
 
     # Optionally, create event-time dummies for dynamic effects
-    event_time_dummies = pd.get_dummies(df["periods_since_treatment"], prefix="event_time", dtype=float, drop_first=True)
+    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float, drop_first=True)
     # Only keep dummies for post-treatment periods (e.g., 0, 1, 2, ...)
     post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")]
 
