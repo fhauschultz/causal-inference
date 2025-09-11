@@ -197,7 +197,6 @@ def estimate_staggered_did_sa(
     # Identify cohorts (treated units with a finite start time)
     cohorts = df[[unit_col, treatment_start_col]].drop_duplicates().dropna(subset=[treatment_start_col])
     cohorts = cohorts.rename(columns={treatment_start_col: "cohort_start"})
-    never_treated_units = set(df.loc[df[treatment_start_col].isna(), unit_col].unique())
 
     # Precompute panel size per cohort for weights
     cohort_sizes = cohorts.groupby("cohort_start")[unit_col].nunique().sort_index()
