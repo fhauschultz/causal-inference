@@ -1,9 +1,9 @@
 import re
 
+import linearmodels as lm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import statsmodels.api as sm
 from scipy.stats import t
 
 from causal_inference.utils import BaseCausalInference
@@ -13,7 +13,7 @@ class StaggeredDID(BaseCausalInference):
     def fit(self, alpha=0.1):
         self.models = {}
         self.model_effects = {}
-        model, df, table = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha)
+        self.did_model, self.df, table = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha)
         self.model_effects[self.value_col] = table
         self.models[self.value_col] = self.model
         self.model_fitted = True
@@ -135,20 +135,21 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     df["periods_since_treatment"] = df["periods_since_treatment"].fillna(0)
 
     # Optionally, create event-time dummies for dynamic effects
-    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float, drop_first=True)
+    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float)
     # Only keep dummies for post-treatment periods (e.g., 0, 1, 2, ...)
     post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")].drop(columns=f"event_time_{reference_period}")
 
     # Build regression matrix
-    X = pd.get_dummies(df[unit_col], prefix="unit", dtype=float)
-    X = X.join(pd.get_dummies(df[time_col], prefix="time", drop_first=True, dtype=float))
+    # X = pd.get_dummies(df[unit_col], prefix="unit", dtype=float)
+    # X = X.join(pd.get_dummies(df[time_col], prefix="time", dtype=float))
     X = X.join(post_event_dummies)
     if covariates:
         X = X.join(df[covariates].astype(float))
     # X = sm.add_constant(X)
     y = df[outcome_col].astype(float)
 
-    model = sm.OLS(y, X).fit()
+    model = lm.PanelOLS(y, X.set_index([unit_col, time_col]), entity_effects=True, time_effects=True)
+    fit = model.fit(cov_type="clustered", cluster_entity=True)
 
     estimates = extract_staggered_treatment_effect(model, alpha=alpha, reference_period=reference_period)
     return model, df, estimates
