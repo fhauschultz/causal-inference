@@ -165,158 +165,202 @@ def _make_event_time(s, g):
 
 
 def estimate_staggered_did_sa(
-    data,
-    unit_col,
-    time_col,
-    outcome_col,
-    treatment_start_col,
+    data: pd.DataFrame,
+    unit_col: str,
+    time_col: str,
+    outcome_col: str,
+    treatment_start_col: str,
     covariates=None,
-    reference_period=-1,
-    event_time_window=None,  # e.g., (-5, 5); None = use full support
-    alpha=0.1,
-    cov_type="clustered",
+    reference_period: int = -1,
+    event_time_window=None,  # e.g., (-5, 5)
+    alpha: float = 0.10,
+    cov_type: str = "clustered",
 ):
     """
-    Sun & Abraham (2020) interaction-weighted / stacked event-study estimator.
-
-    - For each cohort g, keep (i) treated units in g and (ii) NOT-YET-TREATED (and never-treated) units at each t.
-    - Construct cohort-specific event-time dummies 1{G_i=g}*1{t-g = l}, omit l=reference_period.
-    - Stack cohorts into one dataset and run TWFE on the stack with unit and time FE.
-    - Aggregate cohort-specific coefficients at each l using cohort-size weights.
+    Sun & Abraham (2020) interaction-weighted / stacked event-study estimator
+    with robust design cleaning to avoid rank/absorption issues in linearmodels.
 
     Returns
     -------
-    results : dict with keys
-        - 'fit': linearmodels fit result on stacked sample
-        - 'cohort_effects': DataFrame of beta_{l,g} with CIs
-        - 'agg_effects': DataFrame of interaction-weighted beta_l with CIs
-        - 'stack': stacked dataframe used in regression
+    dict with keys:
+      - 'fit'            : linearmodels fit result on stacked sample
+      - 'cohort_effects' : DataFrame of beta_{l,g} with CIs
+      - 'agg_effects'    : DataFrame of interaction-weighted beta_l with CIs
+      - 'stack'          : dict with 'X' and 'y' stacked design matrices
     """
+    if covariates is None:
+        covariates = []
+
     df = data.copy()
 
-    # Identify cohorts (treated units with a finite start time)
-    cohorts = df[[unit_col, treatment_start_col]].drop_duplicates().dropna(subset=[treatment_start_col])
-    cohorts = cohorts.rename(columns={treatment_start_col: "cohort_start"})
+    # Identify treated cohorts (finite treatment start)
+    cohorts = df[[unit_col, treatment_start_col]].drop_duplicates().dropna(subset=[treatment_start_col]).rename(columns={treatment_start_col: "cohort_start"})
+    if cohorts.empty:
+        raise ValueError("No treated cohorts found (all treatment_start_col are NaN).")
 
-    # Precompute panel size per cohort for weights
+    # Cohort weights: number of units in each cohort
     cohort_sizes = cohorts.groupby("cohort_start")[unit_col].nunique().sort_index()
 
-    # Build stacked dataset
     stacks = []
     for g, g_units in cohorts.groupby("cohort_start"):
-        # Sample: cohort g units + NOT-YET-TREATED (including never-treated) at each t
-        # Not-yet-treated at time t means: (t < cohort_start_i) or never-treated
+        g_units_set = set(g_units[unit_col])
         tmp = df.copy()
-        # Mark whether unit belongs to cohort g
-        tmp["is_cohort_g"] = tmp[unit_col].isin(set(g_units[unit_col]))
-        # Unit's own treatment start
+
+        # membership & own start
+        tmp["is_cohort_g"] = tmp[unit_col].isin(g_units_set)
         tmp["_g_i"] = tmp[treatment_start_col]
-        # Not-yet-treated indicator at (i,t): True if never-treated OR t < g_i
+
+        # not-yet-treated indicator at (i,t)
         tmp["not_yet_treated"] = tmp["_g_i"].isna() | (tmp[time_col] < tmp["_g_i"])
 
-        # Keep: (cohort g units) OR (not-yet-treated at t)
+        # keep cohort-g + not-yet-treated rows
         tmp = tmp.loc[tmp["is_cohort_g"] | tmp["not_yet_treated"]].copy()
 
-        # Event time relative to cohort g
-        tmp["event_time"] = tmp[time_col] - g
+        # event time relative to cohort g
+        tmp["event_time"] = (tmp[time_col] - g).astype(int)
 
-        # Optional window trimming
+        # optional trimming window
         if event_time_window is not None:
             lo, hi = event_time_window
             tmp = tmp.loc[(tmp["event_time"] >= lo) & (tmp["event_time"] <= hi)]
 
-        # Create cohort-specific event-time dummies (prefix includes g)
-        et = tmp["event_time"].astype(int)
-        dums = pd.get_dummies(et, prefix=f"et_g{g}", dtype=float)
+        # build cohort-specific event-time dummies
+        dums = pd.get_dummies(tmp["event_time"], prefix=f"et_g{int(g)}", dtype=float)
 
-        # Drop reference period l = reference_period
-        ref_col = f"et_g{g}_{int(reference_period)}"
+        # drop reference period
+        ref_col = f"et_g{int(g)}_{int(reference_period)}"
         if ref_col in dums.columns:
             dums = dums.drop(columns=ref_col)
 
-        # Assemble design
+        # skip degenerate cohort (no estimable event-time dummies left)
+        if dums.shape[1] == 0:
+            continue
+
+        # covariates: keep only those with time-variation within stacked units (below)
         X_parts = [dums]
         if covariates:
-            X_parts.append(tmp[covariates].astype(float))
+            cov = tmp[covariates].apply(pd.to_numeric, errors="coerce").astype(float)
+            X_parts.append(cov)
 
         Xg = pd.concat(X_parts, axis=1)
+
+        # outcomes & stacked unit id (i,g) for entity FE
         yg = tmp[[unit_col, time_col, outcome_col]].copy()
-        # Create stacked unit id (i,g) to allow unit FE per stack row group
-        yg["stack_unit"] = yg[unit_col].astype(str) + f"__g{g}"
+        yg["stack_unit"] = yg[unit_col].astype(str) + f"__g{int(g)}"
         Xg["stack_unit"] = yg["stack_unit"]
         Xg[time_col] = yg[time_col]
 
-        # Keep meta to later retrieve cohort g, event_time, etc.
-        tmp = tmp[[unit_col, time_col, "event_time"]].copy()
-        tmp["stack_unit"] = yg["stack_unit"]
-
+        # index for PanelOLS
         Xg.set_index(["stack_unit", time_col], inplace=True)
         yg.set_index(["stack_unit", time_col], inplace=True)
 
-        stacks.append((g, Xg, yg[[outcome_col]], cohort_sizes.loc[g]))
+        # ensure numeric types
+        Xg = Xg.apply(pd.to_numeric, errors="coerce").astype(float)
+        yg[outcome_col] = pd.to_numeric(yg[outcome_col], errors="coerce").astype(float)
 
-    # Concatenate across cohorts
-    X_list, y_list, w_list = [], [], []
-    for g, Xg, yg, wg in stacks:
-        X_list.append(Xg)
-        y_list.append(yg)
-        w_list.append((g, wg))
-    X_stack = pd.concat(X_list, axis=0).sort_index()
-    y_stack = pd.concat(y_list, axis=0).sort_index()
-    weights = dict(w_list)  # cohort-size weights for aggregation
+        stacks.append((int(g), Xg, yg[[outcome_col]], cohort_sizes.loc[g]))
 
-    # Fit PanelOLS on stacked sample with unit and time FE; cluster by original unit if available
-    # Here we can only cluster at the stacked unit level; if you want original-unit clustering,
-    # add original unit id to the index and pass cluster_entity=True (approximate).
-    model = lm.PanelOLS(y_stack, X_stack, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
+    if not stacks:
+        raise ValueError("After cleaning, no cohorts have estimable event-time dummies.")
+
+    # concat stacks
+    X_stack = pd.concat([Xg for _, Xg, _, _ in stacks], axis=0).sort_index()
+    y_stack = pd.concat([yg for _, _, yg, _ in stacks], axis=0).sort_index()
+    weights = {g: w for g, _, _, w in stacks}
+
+    # --- DESIGN CLEANING (prevents rank/check issues) -------------------------
+
+    # drop columns that are all NaN
+    X_stack = X_stack.dropna(axis=1, how="all")
+
+    # drop all-zero columns
+    nonzero_cols = X_stack.columns[(X_stack != 0).any(axis=0)]
+    X_stack = X_stack[nonzero_cols]
+
+    # drop all-one columns (intercept-like)
+    all_one_cols = X_stack.columns[(X_stack == 1).all(axis=0)]
+    if len(all_one_cols):
+        X_stack = X_stack.drop(columns=all_one_cols)
+
+    # drop globally-constant columns (including constants != 0/1)
+    const_cols = X_stack.columns[X_stack.nunique(dropna=False) == 1]
+    if len(const_cols):
+        X_stack = X_stack.drop(columns=const_cols)
+
+    # drop columns with no within-entity variation (absorbed by entity FE)
+    # (compute demeaned-by-entity variance)
+    if X_stack.shape[1] == 0:
+        raise ValueError("No regressors left after constant/zero/one drops.")
+
+    demeaned = X_stack.groupby(level=0).transform(lambda c: c - c.groupby(level=0).transform("mean"))
+    keep_cols = demeaned.var().replace(0, np.nan).notna()
+    if keep_cols.sum() == 0:
+        raise ValueError("All regressors absorbed by entity fixed effects.")
+    X_stack = X_stack.loc[:, keep_cols]
+
+    # final safety: drop columns that are still all-zero after demeaning (rare)
+    nonzero_cols = X_stack.columns[(X_stack != 0).any(axis=0)]
+    X_stack = X_stack[nonzero_cols]
+
+    # --- FIT ------------------------------------------------------------------
+
+    model = lm.PanelOLS(
+        y_stack,
+        X_stack,
+        entity_effects=True,
+        time_effects=True,
+        drop_absorbed=True,  # let linearmodels silently remove any leftover absorbed cols
+        check_rank=False,  # avoid hard failure on near-collinearity
+    )
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
-    # Extract cohort-specific coefficients
+    # --- EXTRACT COHORT-SPECIFIC COEFFICIENTS --------------------------------
+
     params = fit.params.copy()
     ses = fit.std_errors.copy()
-    # Parse names like "et_g{g}_{l}"
+
     rows = []
     for name, val in params.items():
+        # expected pattern: "et_g{g}_{l}"
         if not name.startswith("et_g"):
             continue
-        # name pattern: et_g{g}_{l}
         try:
-            g_str, l_str = name.split("_")[1:]  # ["g{g}", "{l}"]
-            g_val = int(g_str[1:])  # drop 'g'
-            l_val = int(l_str)
+            # split "et_g{g}_{l}" => ["et", "g{g}", "{l}"]
+            parts = name.split("_")
+            g_val = int(parts[1][1:])  # remove leading "g"
+            l_val = int(parts[2])
         except Exception:
             continue
-        rows.append((g_val, l_val, val, ses.loc[name]))
-    if not rows:
-        raise ValueError("No cohort-specific event-time coefficients were constructed. Check your inputs.")
+        se = float(ses.get(name, np.nan))
+        rows.append((g_val, l_val, float(val), se))
 
-    coef_df = pd.DataFrame(rows, columns=["cohort_start", "event_time", "estimate", "std_error"])
-    # Add CIs for cohort-specific betas
+    if not rows:
+        raise ValueError("No cohort-specific event-time coefficients found in fit results.")
+
+    coef_df = pd.DataFrame(rows, columns=["cohort_start", "event_time", "estimate", "std_error"]).sort_values(["cohort_start", "event_time"])
     z = norm.ppf(1 - alpha / 2)
     coef_df["ci_lower"] = coef_df["estimate"] - z * coef_df["std_error"]
     coef_df["ci_upper"] = coef_df["estimate"] + z * coef_df["std_error"]
 
-    # Interaction-weighted aggregation across cohorts at each event time
-    # weights w_g proportional to cohort size; drop cohort/event cells not present
+    # --- INTERACTION-WEIGHTED AGGREGATION ------------------------------------
+
     w_series = pd.Series(weights, name="w")
     coef_df = coef_df.merge(w_series, left_on="cohort_start", right_index=True, how="left")
-    # Normalize weights within each event_time using available cohorts
+    # normalize weights within event_time using available cohorts at that l
     coef_df["w_norm"] = coef_df.groupby("event_time")["w"].transform(lambda s: s / s.sum())
 
-    agg = coef_df.assign(weighted_est=lambda d: d["w_norm"] * d["estimate"]).groupby("event_time", as_index=True).agg(estimate=("weighted_est", "sum")).sort_index()
+    agg = coef_df.assign(weighted_est=lambda d: d["w_norm"] * d["estimate"]).groupby("event_time", as_index=True)["weighted_est"].sum().to_frame("estimate").sort_index()
 
-    # Conservative SEs for the weighted averages (delta method with independence assumption).
-    # For more exact inference, run a single regression that directly constructs the
-    # l-specific weighted index, or bootstrap. This keeps things simple and transparent.
+    # conservative SE via delta method under independence across cohorts
     agg_se = coef_df.assign(weighted_var=lambda d: (d["w_norm"] ** 2) * (d["std_error"] ** 2)).groupby("event_time")["weighted_var"].sum().pow(0.5)
     agg["std_error"] = agg_se
     agg["ci_lower"] = agg["estimate"] - z * agg["std_error"]
     agg["ci_upper"] = agg["estimate"] + z * agg["std_error"]
 
-    # Insert reference period at zero (omitted by construction)
+    # add reference period at zero if missing
     if reference_period not in agg.index:
-        agg.loc[reference_period, ["estimate", "std_error", "ci_lower", "ci_upper"]] = [0.0, 0.0, 0.0, 0.0]
-    agg = agg.sort_index()
+        agg.loc[int(reference_period), ["estimate", "std_error", "ci_lower", "ci_upper"]] = [0.0, 0.0, 0.0, 0.0]
+        agg = agg.sort_index()
 
     return {
         "fit": fit,
