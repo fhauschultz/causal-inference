@@ -2,6 +2,6 @@ numpy>=2.0.0
 pandas>=2.3.1
 pytest>=8.4.1
 matplotlib>=3.10.5
-statsmodels>=0.14.5
 seaborn>=0.13.0
 scikit-learn>=1.7.1
+linearmodels>=6.1
