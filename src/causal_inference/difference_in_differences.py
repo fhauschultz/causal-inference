@@ -145,7 +145,7 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     X = X.join(post_event_dummies)
     if covariates:
         X = X.join(df[covariates].astype(float))
-    X = sm.add_constant(X)
+    # X = sm.add_constant(X)
     y = df[outcome_col].astype(float)
 
     model = sm.OLS(y, X).fit()
