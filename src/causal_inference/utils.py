@@ -81,7 +81,6 @@ class BaseCausalInference:
         training_end_date=None,
         covariates=None,
         model=None,
-        cov_type="HC3",
     ):
         self.covariates = covariates
         self.time_col = time_col
@@ -101,7 +100,6 @@ class BaseCausalInference:
         self.results = None
         self.model_fitted = False
         self.model = model
-        self.cov_type = cov_type
 
         if self.model is not None and hasattr(self.model, "fit_intercept"):
             self.model.fit_intercept = False

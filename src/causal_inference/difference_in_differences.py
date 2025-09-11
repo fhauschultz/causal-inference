@@ -9,10 +9,10 @@ from causal_inference.utils import BaseCausalInference
 
 
 class StaggeredDID(BaseCausalInference):
-    def fit(self, alpha=0.1):
+    def fit(self, alpha=0.1, cov_type="clustered"):
         self.models = {}
         self.model_effects = {}
-        self.did_model, self.df, table = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha)
+        self.did_model, self.df, table = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha, cov_type=cov_type)
         self.model_effects[self.value_col] = table
         self.models[self.value_col] = self.model
         self.model_fitted = True
@@ -46,7 +46,7 @@ class StaggeredDID(BaseCausalInference):
         plt.show()
 
 
-def conf_int_robust(model, alpha=0.05, **cov_kwds):
+def conf_int(model, alpha=0.05):
     """
     Compute confidence intervals using specified covariance type, including heteroscedasticity-robust standard errors.
 
@@ -85,7 +85,7 @@ def extract_staggered_treatment_effect(model, alpha=0.05, reference_period=-1, c
     # Only keep coefficients for event_time dummies (dynamic treatment effects)
     effect_params = {k: v for k, v in model.params.items() if k.startswith("event_time_")}
     # Compute robust confidence intervals
-    ci = conf_int_robust(model, alpha=alpha, cov_type=cov_type, **cov_kwds)
+    ci = conf_int(model, alpha=alpha)
     effect_ci = {k: ci.loc[k] for k in effect_params.keys() if k in ci.index}
 
     # Extract event-time numbers
@@ -105,7 +105,7 @@ def extract_staggered_treatment_effect(model, alpha=0.05, reference_period=-1, c
     return df.sort_index()
 
 
-def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_start_col, covariates=None, reference_period=-1.0, alpha=0.1):
+def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_start_col, covariates=None, reference_period=-1.0, alpha=0.1, cov_type="clustered"):
     """
     Estimate staggered Difference-in-Differences (DiD) using statsmodels OLS.
     Each treated unit can have a different treatment start period.
@@ -136,18 +136,15 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     # Build regression matrix
     X = df[[unit_col, time_col]]
     X = X.join(post_event_dummies)
-    # X = pd.get_dummies(df[unit_col], prefix="unit", dtype=float)
-    # X = X.join(pd.get_dummies(df[time_col], prefix="time", dtype=float))
 
     if covariates:
         X = X.join(df[covariates].astype(float))
-    # X = sm.add_constant(X)
     y = df[[unit_col, time_col, outcome_col]].set_index([unit_col, time_col])
     y[outcome_col] = y[outcome_col].astype(float)
     X = X.set_index([unit_col, time_col])
 
     model = lm.PanelOLS(y, X, entity_effects=True, time_effects=True)
-    fit = model.fit(cov_type="clustered", cluster_entity=True)
+    fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
     estimates = extract_staggered_treatment_effect(fit, alpha=alpha, reference_period=reference_period)
     return model, df, estimates
