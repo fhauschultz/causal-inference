@@ -140,13 +140,17 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")].drop(columns=f"event_time_{reference_period}")
 
     # Build regression matrix
+    X = df[[unit_col, time_col]]
+    X = X.join(post_event_dummies)
     # X = pd.get_dummies(df[unit_col], prefix="unit", dtype=float)
     # X = X.join(pd.get_dummies(df[time_col], prefix="time", dtype=float))
-    X = X.join(post_event_dummies)
+
     if covariates:
         X = X.join(df[covariates].astype(float))
     # X = sm.add_constant(X)
     y = df[outcome_col].astype(float)
+
+    print(X.set_index([unit_col, time_col]))
 
     model = lm.PanelOLS(y, X.set_index([unit_col, time_col]), entity_effects=True, time_effects=True)
     fit = model.fit(cov_type="clustered", cluster_entity=True)
