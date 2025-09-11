@@ -152,7 +152,7 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     y[outcome_col] = y[outcome_col].astype(float)
     X = X.set_index([unit_col, time_col])
 
-    model = lm.PanelOLS(y, X, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
+    model = lm.PanelOLS(y, X, entity_effects=True, time_effects=True)
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
     estimates = extract_staggered_treatment_effect(fit, alpha=alpha, reference_period=reference_period)
@@ -268,7 +268,7 @@ def estimate_staggered_did_sa(
     # Fit PanelOLS on stacked sample with unit and time FE; cluster by original unit if available
     # Here we can only cluster at the stacked unit level; if you want original-unit clustering,
     # add original unit id to the index and pass cluster_entity=True (approximate).
-    model = lm.PanelOLS(y_stack, X_stack, entity_effects=True, time_effects=True)
+    model = lm.PanelOLS(y_stack, X_stack, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
     # Extract cohort-specific coefficients
