@@ -10,12 +10,10 @@ from causal_inference.utils import BaseCausalInference
 
 
 class StaggeredDID(BaseCausalInference):
-    def fit(self, significance_level=0.1):
+    def fit(self, alpha=0.1):
         self.models = {}
         self.model_effects = {}
-        self.significance_level = significance_level
-        model, df = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates)
-        table = extract_staggered_treatment_effect(model, alpha=significance_level, cov_type=self.cov_type)
+        model, df, table = estimate_staggered_did(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha)
         self.model_effects[self.value_col] = table
         self.models[self.value_col] = self.model
         self.model_fitted = True
@@ -47,47 +45,6 @@ class StaggeredDID(BaseCausalInference):
         plt.legend()
         plt.tight_layout()
         plt.show()
-
-
-def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_start_col, covariates=None):
-    """
-    Estimate staggered Difference-in-Differences (DiD) using statsmodels OLS.
-    Each treated unit can have a different treatment start period.
-
-    Args:
-        data: DataFrame with panel data.
-        unit_col: Column name for unit identifier.
-        time_col: Column name for time variable.
-        outcome_col: Column name for outcome variable.
-        treatment_start_col: Column name for treatment start period (NaN for never-treated).
-        covariates: List of additional covariate column names (optional).
-
-    Returns:
-        model: Fitted statsmodels OLS model.
-        df: DataFrame with periods since treatment and treatment indicator.
-    """
-
-    df = data.copy()
-    # Calculate periods since treatment start (NaN for never-treated)
-    df["periods_since_treatment"] = df[time_col] - df[treatment_start_col]
-    df["periods_since_treatment"] = df["periods_since_treatment"].fillna(0)
-
-    # Optionally, create event-time dummies for dynamic effects
-    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float, drop_first=True)
-    # Only keep dummies for post-treatment periods (e.g., 0, 1, 2, ...)
-    post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")]
-
-    # Build regression matrix
-    X = pd.get_dummies(df[unit_col], prefix="unit", drop_first=True, dtype=float)
-    X = X.join(pd.get_dummies(df[time_col], prefix="time", drop_first=True, dtype=float))
-    X = X.join(post_event_dummies)
-    if covariates:
-        X = X.join(df[covariates].astype(float))
-    X = sm.add_constant(X)
-    y = df[outcome_col].astype(float)
-
-    model = sm.OLS(y, X).fit()
-    return model, df
 
 
 def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
@@ -124,7 +81,7 @@ def conf_int_robust(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
     return pd.DataFrame({"lower": ci_lower, "upper": ci_upper})
 
 
-def extract_staggered_treatment_effect(model, alpha=0.05, cov_type="nonrobust", **cov_kwds):
+def extract_staggered_treatment_effect(model, alpha=0.05, reference_period=-1, cov_type="nonrobust", **cov_kwds):
     """
     Extract estimated treatment effects and confidence intervals for staggered DiD.
     Returns a DataFrame with event-time effects and confidence bands.
@@ -149,4 +106,50 @@ def extract_staggered_treatment_effect(model, alpha=0.05, cov_type="nonrobust", 
     # Build DataFrame
     df = pd.DataFrame({"estimate": pd.Series(estimates), "ci_lower": pd.Series(lower), "ci_upper": pd.Series(upper)})
     df.index.name = "event_time"
+    df.loc[reference_period, ["estimate", "ci_lower", "ci_upper"]] = [0, 0, 0]
+
     return df.sort_index()
+
+
+def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_start_col, covariates=None, reference_period=-1.0, alpha=0.1):
+    """
+    Estimate staggered Difference-in-Differences (DiD) using statsmodels OLS.
+    Each treated unit can have a different treatment start period.
+
+    Args:
+        data: DataFrame with panel data.
+        unit_col: Column name for unit identifier.
+        time_col: Column name for time variable.
+        outcome_col: Column name for outcome variable.
+        treatment_start_col: Column name for treatment start period (NaN for never-treated).
+        covariates: List of additional covariate column names (optional).
+
+    Returns:
+        model: Fitted statsmodels OLS model.
+        df: DataFrame with periods since treatment and treatment indicator.
+    """
+
+    df = data.copy()
+    # Calculate periods since treatment start (NaN for never-treated)
+    df["periods_since_treatment"] = df[time_col] - df[treatment_start_col]
+    df["periods_since_treatment"] = df["periods_since_treatment"].fillna(0)
+
+    # Optionally, create event-time dummies for dynamic effects
+    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float, drop_first=True)
+    # Only keep dummies for post-treatment periods (e.g., 0, 1, 2, ...)
+    print(event_time_dummies.columns)
+    post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")].drop(columns=f"event_time_{reference_period}")
+
+    # Build regression matrix
+    X = pd.get_dummies(df[unit_col], prefix="unit", dtype=float)
+    X = X.join(pd.get_dummies(df[time_col], prefix="time", drop_first=True, dtype=float))
+    X = X.join(post_event_dummies)
+    if covariates:
+        X = X.join(df[covariates].astype(float))
+    X = sm.add_constant(X)
+    y = df[outcome_col].astype(float)
+
+    model = sm.OLS(y, X).fit()
+
+    estimates = extract_staggered_treatment_effect(model, alpha=alpha, reference_period=reference_period)
+    return model, df, estimates
