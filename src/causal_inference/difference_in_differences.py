@@ -18,7 +18,7 @@ class StaggeredDID(BaseCausalInference):
             self.model_effects[self.value_col] = table
             self.models[self.value_col] = self.did_model
         elif method == "sun_abraham":
-            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, event_time_window=event_time_window, alpha=alpha, cov_type=cov_type)
+            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha, cov_type=cov_type)
             # Store aggregated SA event-study (safe visual)
             self.model_effects[self.value_col] = res["agg_effects"]
             self.models[self.value_col] = res["fit"]
@@ -287,7 +287,13 @@ def estimate_staggered_did_sa(
     X = X.set_index([df[unit_col], df[time_col]])
 
     # --- Fit TWFE with unit & time FE ---
-    model = PanelOLS(y, X, entity_effects=True, time_effects=True)
+    model = PanelOLS(
+        y,
+        X,
+        entity_effects=True,
+        time_effects=True,
+        drop_absorbed=True,
+    )
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
     # --- Step 1: δ_{e,ℓ} table with SEs/CIs ---
