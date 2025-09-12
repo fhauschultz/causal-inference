@@ -185,8 +185,11 @@ def estimate_staggered_did_sa(
         estimates: DataFrame indexed by event-time ℓ with ['estimate','ci_lower','ci_upper'],
                    including the anchor period as 0,0,0.
     """
+    import pandas as pd
+    from scipy.stats import norm
 
     df = data.copy()
+
     # ---------- cohorts & exclusions ----------
     Ei_series = pd.to_numeric(df[treatment_start_col], errors="coerce")  # NaN => never-treated
     has_never = Ei_series.isna().any()
@@ -234,21 +237,21 @@ def estimate_staggered_did_sa(
     # ---------- validate/choose effective reference ----------
     obs_counts = df.loc[df["_Ei"].isin(cohorts_use), [unit_col, "_Ei", "_ell"]].dropna(subset=["_Ei", "_ell"]).assign(_Ei=lambda d: d["_Ei"].astype(int), _ell=lambda d: d["_ell"].astype(int)).groupby(["_Ei", "_ell"])[unit_col].size().rename("n_obs").reset_index()
 
-    def total_obs_at_l(l):
-        tmp = obs_counts.loc[obs_counts["_ell"] == int(l), "n_obs"]
+    def total_obs_at_ell(ell):
+        tmp = obs_counts.loc[obs_counts["_ell"] == int(ell), "n_obs"]
         return int(tmp.sum()) if not tmp.empty else 0
 
-    if total_obs_at_l(req_ref) == 0:
-        pre_ls = [int(l) for l in ell_support if l < 0]
-        if not pre_ls:
+    if total_obs_at_ell(req_ref) == 0:
+        pre_ells = [int(ell) for ell in ell_support if ell < 0]
+        if not pre_ells:
             raise ValueError(f"No observations at requested reference_period ℓ={req_ref}, and no pre-treatment periods available to anchor.")
-        eff_ref = max(pre_ls, key=total_obs_at_l)
+        eff_ref = max(pre_ells, key=total_obs_at_ell)
         warnings.warn(f"reference_period={req_ref} has no support; using ℓ={eff_ref} as the anchor.")
     else:
         eff_ref = req_ref
 
     # ---------- build interactions (omit eff_ref) ----------
-    ell_for_dummies = [int(l) for l in ell_support if int(l) != int(eff_ref)]
+    ells_for_dummies = [int(ell) for ell in ell_support if int(ell) != int(eff_ref)]
 
     cohort_key = df["_Ei"].astype("Int64")
     cohort_df = pd.get_dummies(cohort_key, prefix="cohort").astype(float)
@@ -257,20 +260,20 @@ def estimate_staggered_did_sa(
 
     event_key = df["_ell"].astype("Int64")
     event_df = pd.get_dummies(event_key, prefix="ell").astype(float)
-    event_cols = [f"ell_{l}" for l in ell_for_dummies if f"ell_{l}" in event_df.columns]
+    event_cols = [f"ell_{ell}" for ell in ells_for_dummies if f"ell_{ell}" in event_df.columns]
     event_df = event_df.reindex(columns=event_cols, fill_value=0.0)
 
     inter_cols = []
     inter_mat = []
     for e in cohorts_use:
         e_col = f"cohort_{e}"
-        for l in ell_for_dummies:
-            l_col = f"ell_{l}"
-            if l_col not in event_df.columns:
+        for ell in ells_for_dummies:
+            ell_col = f"ell_{ell}"
+            if ell_col not in event_df.columns:
                 continue
-            name = f"int_e{e}_l{l}"
-            inter_cols.append((e, l, name))
-            inter_mat.append(cohort_df[e_col].values * event_df[l_col].values)
+            name = f"int_e{e}_l{ell}"
+            inter_cols.append((e, ell, name))
+            inter_mat.append(cohort_df[e_col].values * event_df[ell_col].values)
 
     if not inter_mat:
         raise ValueError("No cohort×event interactions after exclusions/reference choice.")
@@ -315,9 +318,14 @@ def estimate_staggered_did_sa(
         X_within = X
 
     # ---------- OLS on within-transformed data (no intercept) ----------
+    cov_map = {"clustered": "cluster", "cluster": "cluster", "robust": "HC1", "hc1": "HC1"}
+    cov_choice = cov_map.get(str(cov_type).lower(), "cluster")
 
     ols = sm.OLS(y_within.values, X_within.values)  # no constant
-    fit_res = ols.fit(cov_type="cluster", cov_kwds={"groups": y_within.index.get_level_values(0)})
+    fit_res = ols.fit(
+        cov_type=cov_choice,
+        cov_kwds={"groups": y_within.index.get_level_values(0)} if cov_choice == "cluster" else None,
+    )
 
     params = pd.Series(fit_res.params, index=X_within.columns)
     cov = pd.DataFrame(fit_res.cov_params(), index=X_within.columns, columns=X_within.columns)
@@ -329,51 +337,51 @@ def estimate_staggered_did_sa(
     ref_presence = set(obs_counts.loc[obs_counts["_ell"] == int(eff_ref), "_Ei"].tolist())
 
     rows = []
-    for l_time in np.sort(ell_support):
-        l_time = int(l_time)
-        if l == int(eff_ref):
-            rows.append({"event_l": l_time, "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
+    for ell_time in np.sort(ell_support):
+        ell_time = int(ell_time)
+        if ell_time == int(eff_ref):
+            rows.append({"event_l": ell_time, "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
             continue
 
-        at_l = obs_counts.loc[obs_counts["_ell"] == l_time]
-        cohorts_at_l = set(at_l["_Ei"].tolist())
-        eligible = sorted(list(cohorts_at_l & ref_presence))
+        at_ell = obs_counts.loc[obs_counts["_ell"] == ell_time]
+        cohorts_at_ell = set(at_ell["_Ei"].tolist())
+        eligible = sorted(list(cohorts_at_ell & ref_presence))
         if not eligible:
-            rows.append({"event_l": l_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": ell_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
-        n_by_e = {int(r["_Ei"]): int(r["n_obs"]) for _, r in at_l.iterrows() if int(r["_Ei"]) in eligible}
+        n_by_e = {int(r["_Ei"]): int(r["n_obs"]) for _, r in at_ell.iterrows() if int(r["_Ei"]) in eligible}
         total = float(sum(n_by_e.values()))
         if total <= 0:
-            rows.append({"event_l": l_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": ell_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
         w_e = {e: n_by_e[e] / total for e in eligible}
 
-        names_l, weights_l = [], []
+        names_ell, weights_ell = [], []
         for e in eligible:
-            name = f"int_e{int(e)}_l{int(l)}"
+            name = f"int_e{int(e)}_l{int(ell_time)}"
             if name in params.index:
-                names_l.append(name)
-                weights_l.append(w_e[e])
+                names_ell.append(name)
+                weights_ell.append(w_e[e])
 
-        if not names_l:
-            rows.append({"event_l": l_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+        if not names_ell:
+            rows.append({"event_l": ell_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
-        weights_l = np.asarray(weights_l, dtype=float)
-        weights_l = weights_l / weights_l.sum()
+        weights_arr = np.asarray(weights_ell, dtype=float)
+        weights_arr = weights_arr / weights_arr.sum()
 
-        beta_l = params.loc[names_l].values
-        est_l = float(weights_l @ beta_l)
+        beta_ell = params.loc[names_ell].values
+        est = float(weights_arr @ beta_ell)
 
-        cov_ll = cov.loc[names_l, names_l].values
-        var_l = float(weights_l @ cov_ll @ weights_l)
-        var_l = max(var_l, 0.0)
-        se_l = np.sqrt(var_l)
+        cov_block = cov.loc[names_ell, names_ell].values
+        var = float(weights_arr @ cov_block @ weights_arr)
+        var = max(var, 0.0)
+        se = np.sqrt(var)
 
-        rows.append({"event_l": l_time, "estimate": est_l, "ci_lower": est_l - z * se_l, "ci_upper": est_l + z * se_l})
+        rows.append({"event_l": ell_time, "estimate": est, "ci_lower": est - z * se, "ci_upper": est + z * se})
 
-    estimates = pd.DataFrame(rows).set_index("event_l").sort_index()
+    estimates = pd.DataFrame(rows).set_index("event_l").sortindex() if hasattr(pd.DataFrame, "sortindex") else pd.DataFrame(rows).set_index("event_l").sort_index()
 
     model = {"params": params, "cov": cov, "pvalues": pvals}
     df["_Ei_excluded"] = Ei_helper.isin(excluded).astype(int)
