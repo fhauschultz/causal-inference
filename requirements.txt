@@ -5,3 +5,4 @@ matplotlib>=3.10.5
 seaborn>=0.13.0
 scikit-learn>=1.7.1
 linearmodels>=6.1
+statsmodels>=0.14.4
