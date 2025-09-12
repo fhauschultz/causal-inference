@@ -329,23 +329,23 @@ def estimate_staggered_did_sa(
     ref_presence = set(obs_counts.loc[obs_counts["_ell"] == int(eff_ref), "_Ei"].tolist())
 
     rows = []
-    for l in np.sort(ell_support):
-        l = int(l)
+    for l_time in np.sort(ell_support):
+        l_time = int(l_time)
         if l == int(eff_ref):
-            rows.append({"event_l": l, "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
+            rows.append({"event_l": l_time, "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
             continue
 
-        at_l = obs_counts.loc[obs_counts["_ell"] == l]
+        at_l = obs_counts.loc[obs_counts["_ell"] == l_time]
         cohorts_at_l = set(at_l["_Ei"].tolist())
         eligible = sorted(list(cohorts_at_l & ref_presence))
         if not eligible:
-            rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": l_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
         n_by_e = {int(r["_Ei"]): int(r["n_obs"]) for _, r in at_l.iterrows() if int(r["_Ei"]) in eligible}
         total = float(sum(n_by_e.values()))
         if total <= 0:
-            rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": l_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
         w_e = {e: n_by_e[e] / total for e in eligible}
 
@@ -357,7 +357,7 @@ def estimate_staggered_did_sa(
                 weights_l.append(w_e[e])
 
         if not names_l:
-            rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": l_time, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
         weights_l = np.asarray(weights_l, dtype=float)
@@ -371,7 +371,7 @@ def estimate_staggered_did_sa(
         var_l = max(var_l, 0.0)
         se_l = np.sqrt(var_l)
 
-        rows.append({"event_l": l, "estimate": est_l, "ci_lower": est_l - z * se_l, "ci_upper": est_l + z * se_l})
+        rows.append({"event_l": l_time, "estimate": est_l, "ci_lower": est_l - z * se_l, "ci_upper": est_l + z * se_l})
 
     estimates = pd.DataFrame(rows).set_index("event_l").sort_index()
 
