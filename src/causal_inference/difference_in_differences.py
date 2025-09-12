@@ -1,9 +1,11 @@
 import re
+import warnings
 
 import linearmodels as lm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import statsmodels.api as sm
 from scipy.stats import norm
 
 from causal_inference.utils import BaseCausalInference
@@ -172,33 +174,23 @@ def estimate_staggered_did_sa(
     cov_type="clustered",
 ):
     """
-    Sun & Abraham (2021) interaction-weighted (IW) event study for staggered treatment,
-    tuned to reproduce R's Sun-Abraham estimator behavior, but without lead/lag binning.
+    Sun & Abraham (2021) interaction-weighted (IW) event study for staggered adoption.
+    - No binning
+    - Observation-level weights with support restriction (cohort must appear at both ℓ and the anchor)
+    - Explicit two-way within (unit & time demeaning) before OLS
 
-    Returns
-    -------
-    model : PanelOLS model handle
-    df    : DataFrame with helper cols (_Ei, _ell, _Ei_excluded)
-    estimates : DataFrame indexed by event-time (ℓ), columns ['estimate','ci_lower','ci_upper'],
-                including the reference period (0 with 0–0 CI).
+    Returns:
+        model: dict-like handle {'params','cov','pvalues'}
+        df:    input data + helper cols (_Ei, _ell, _Ei_excluded)
+        estimates: DataFrame indexed by event-time ℓ with ['estimate','ci_lower','ci_upper'],
+                   including the anchor period as 0,0,0.
     """
-    import pandas as pd
-    from scipy.stats import norm
-
-    # ---- Import PanelOLS ----
-    try:
-        import linearmodels as lm
-
-        PanelOLS = lm.PanelOLS
-    except Exception:
-        from linearmodels.panel import PanelOLS
 
     df = data.copy()
-
-    # ---------- Cohorts (Ei) ----------
-    Ei_series = pd.to_numeric(df[treatment_start_col], errors="coerce")
+    # ---------- cohorts & exclusions ----------
+    Ei_series = pd.to_numeric(df[treatment_start_col], errors="coerce")  # NaN => never-treated
     has_never = Ei_series.isna().any()
-    Ei_helper = Ei_series.fillna(np.inf)
+    Ei_helper = Ei_series.fillna(np.inf)  # helper only
     df["_Ei"] = Ei_series
 
     t_min = df[time_col].min()
@@ -208,43 +200,61 @@ def estimate_staggered_did_sa(
     earliest_treat = finite_E.min() if not finite_E.empty else np.nan
     has_always = np.isfinite(earliest_treat) and (earliest_treat == t_min)
 
-    all_cohorts_helper = np.sort(Ei_helper.unique())
-    finite_cohorts = [int(c) for c in all_cohorts_helper if np.isfinite(c)]
+    all_cohorts = np.sort(Ei_helper.unique())
+    finite_cohorts = [int(c) for c in all_cohorts if np.isfinite(c)]
 
-    # ---------- Exclusion / trimming ----------
-    excluded_cohorts = set()
+    excluded = set()
     trim_tmax = None
     if has_never:
-        excluded_cohorts.add(np.inf)
+        excluded.add(np.inf)
     else:
+        if len(finite_cohorts) == 0:
+            raise ValueError("No treated cohorts found.")
         latest = int(np.max(finite_cohorts))
-        excluded_cohorts.add(latest)
+        excluded.add(latest)
         trim_tmax = latest - 1
 
     if has_always and np.isfinite(earliest_treat):
-        excluded_cohorts.add(int(earliest_treat))
+        excluded.add(int(earliest_treat))
 
     if trim_tmax is not None:
         df = df.loc[df[time_col] <= trim_tmax].copy()
         t_max = df[time_col].max()
 
-    # ---------- Event time ----------
+    # ---------- event time ----------
     df["_ell"] = df[time_col] - df["_Ei"]
     df["_ell"] = df["_ell"].where(df["_Ei"].notna(), np.nan)
-    ref_l = int(reference_period)
+    req_ref = int(reference_period)
 
-    cohorts_for_interaction = [e for e in finite_cohorts if e not in excluded_cohorts]
-    if len(cohorts_for_interaction) == 0:
+    cohorts_use = [e for e in finite_cohorts if e not in excluded]
+    if not cohorts_use:
         raise ValueError("No cohorts remain after exclusions.")
 
-    ell_support = df.loc[df["_Ei"].isin(cohorts_for_interaction), "_ell"].dropna().astype(int).unique()
+    ell_support = df.loc[df["_Ei"].isin(cohorts_use), "_ell"].dropna().astype(int).unique()
     ell_support = np.sort(ell_support)
-    ell_for_dummies = [int(l) for l in ell_support if int(l) != ref_l]
 
-    # ---------- Dummies ----------
+    # ---------- validate/choose effective reference ----------
+    obs_counts = df.loc[df["_Ei"].isin(cohorts_use), [unit_col, "_Ei", "_ell"]].dropna(subset=["_Ei", "_ell"]).assign(_Ei=lambda d: d["_Ei"].astype(int), _ell=lambda d: d["_ell"].astype(int)).groupby(["_Ei", "_ell"])[unit_col].size().rename("n_obs").reset_index()
+
+    def total_obs_at_l(l):
+        tmp = obs_counts.loc[obs_counts["_ell"] == int(l), "n_obs"]
+        return int(tmp.sum()) if not tmp.empty else 0
+
+    if total_obs_at_l(req_ref) == 0:
+        pre_ls = [int(l) for l in ell_support if l < 0]
+        if not pre_ls:
+            raise ValueError(f"No observations at requested reference_period ℓ={req_ref}, and no pre-treatment periods available to anchor.")
+        eff_ref = max(pre_ls, key=total_obs_at_l)
+        warnings.warn(f"reference_period={req_ref} has no support; using ℓ={eff_ref} as the anchor.")
+    else:
+        eff_ref = req_ref
+
+    # ---------- build interactions (omit eff_ref) ----------
+    ell_for_dummies = [int(l) for l in ell_support if int(l) != int(eff_ref)]
+
     cohort_key = df["_Ei"].astype("Int64")
     cohort_df = pd.get_dummies(cohort_key, prefix="cohort").astype(float)
-    cohort_cols = [f"cohort_{e}" for e in cohorts_for_interaction]
+    cohort_cols = [f"cohort_{e}" for e in cohorts_use]
     cohort_df = cohort_df.reindex(columns=cohort_cols, fill_value=0.0)
 
     event_key = df["_ell"].astype("Int64")
@@ -254,7 +264,7 @@ def estimate_staggered_did_sa(
 
     inter_cols = []
     inter_mat = []
-    for e in cohorts_for_interaction:
+    for e in cohorts_use:
         e_col = f"cohort_{e}"
         for l in ell_for_dummies:
             l_col = f"ell_{l}"
@@ -265,7 +275,7 @@ def estimate_staggered_did_sa(
             inter_mat.append(cohort_df[e_col].values * event_df[l_col].values)
 
     if not inter_mat:
-        raise ValueError("No cohort×event interactions after exclusions / reference choice.")
+        raise ValueError("No cohort×event interactions after exclusions/reference choice.")
 
     X_int = pd.DataFrame(
         np.column_stack(inter_mat),
@@ -277,40 +287,60 @@ def estimate_staggered_did_sa(
     if covariates:
         X = pd.concat([X, df[covariates].astype(float)], axis=1)
 
+    # ---------- set panel index ----------
     y = df[[unit_col, time_col, outcome_col]].set_index([unit_col, time_col]).astype(float)[outcome_col]
     X = X.set_index([df[unit_col], df[time_col]])
 
+    # ---------- prune degenerate columns (pandas 2.x safe) ----------
     if X.shape[1] > 0:
-        non_na = X.columns[X.notna().any(axis=0)]
-        X = X[non_na]
+        X = X.loc[:, X.notna().any(axis=0)]
         if X.shape[1] > 0:
-            nonzero = X.columns[(X != 0).any(axis=0)]
-            X = X[nonzero]
+            X = X.loc[:, (X != 0).any(axis=0)]
 
-    # ---------- Fit TWFE ----------
-    model = PanelOLS(y, X, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
-    fit = model.fit(cov_type=cov_type, cluster_entity=True)
+    # ---------- explicit two-way within transform ----------
+    # y~
+    y_df = y.to_frame("y")
+    y_df["unit_mean"] = y_df.groupby(level=0)["y"].transform("mean")
+    y_df["time_mean"] = y_df.groupby(level=1)["y"].transform("mean")
+    grand_y = y_df["y"].mean()
+    y_within = y_df["y"] - y_df["unit_mean"] - y_df["time_mean"] + grand_y
 
-    params = fit.params
-    cov = fit.cov
+    # X~  (column-wise grand means)
+    if X.shape[1] > 0:
+        X_unit_mean = X.groupby(level=0).transform("mean")
+        X_time_mean = X.groupby(level=1).transform("mean")
+        X_grand = X.mean()  # Series: per-column grand mean
+        X_within = X - X_unit_mean - X_time_mean + X_grand
+        keep = X_within.abs().sum(axis=0) > 0
+        X_within = X_within.loc[:, keep]
+    else:
+        X_within = X
+
+    # ---------- OLS on within-transformed data (no intercept) ----------
+
+    ols = sm.OLS(y_within.values, X_within.values)  # no constant
+    fit_res = ols.fit(cov_type="cluster", cov_kwds={"groups": y_within.index.get_level_values(0)})
+
+    params = pd.Series(fit_res.params, index=X_within.columns)
+    cov = pd.DataFrame(fit_res.cov_params(), index=X_within.columns, columns=X_within.columns)
+    pvals = pd.Series(fit_res.pvalues, index=X_within.columns)
+
     z = norm.ppf(1 - alpha / 2.0)
 
-    # ---------- Obs counts and support restriction ----------
-    obs_counts = df.loc[df["_Ei"].isin(cohorts_for_interaction), [unit_col, "_Ei", "_ell"]].dropna(subset=["_Ei", "_ell"]).assign(_Ei=lambda d: d["_Ei"].astype(int), _ell=lambda d: d["_ell"].astype(int)).groupby(["_Ei", "_ell"])[unit_col].size().rename("n_obs").reset_index()
-    ref_presence = set(obs_counts.loc[obs_counts["_ell"] == ref_l, "_Ei"].tolist())
+    # ---------- obs-level weights with support restriction ----------
+    ref_presence = set(obs_counts.loc[obs_counts["_ell"] == int(eff_ref), "_Ei"].tolist())
 
-    # ---------- Build per-ℓ results ----------
     rows = []
-    for l in sorted(ell_support):
+    for l in np.sort(ell_support):
         l = int(l)
-        if l == ref_l:
+        if l == int(eff_ref):
             rows.append({"event_l": l, "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
             continue
 
         at_l = obs_counts.loc[obs_counts["_ell"] == l]
         cohorts_at_l = set(at_l["_Ei"].tolist())
         eligible = sorted(list(cohorts_at_l & ref_presence))
-        if len(eligible) == 0:
+        if not eligible:
             rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
@@ -328,7 +358,7 @@ def estimate_staggered_did_sa(
                 names_l.append(name)
                 weights_l.append(w_e[e])
 
-        if len(names_l) == 0:
+        if not names_l:
             rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
@@ -343,13 +373,11 @@ def estimate_staggered_did_sa(
         var_l = max(var_l, 0.0)
         se_l = np.sqrt(var_l)
 
-        ci_low = est_l - z * se_l
-        ci_high = est_l + z * se_l
-
-        rows.append({"event_l": l, "estimate": est_l, "ci_lower": ci_low, "ci_upper": ci_high})
+        rows.append({"event_l": l, "estimate": est_l, "ci_lower": est_l - z * se_l, "ci_upper": est_l + z * se_l})
 
     estimates = pd.DataFrame(rows).set_index("event_l").sort_index()
 
-    df["_Ei_excluded"] = Ei_helper.isin(excluded_cohorts).astype(int)
+    model = {"params": params, "cov": cov, "pvalues": pvals}
+    df["_Ei_excluded"] = Ei_helper.isin(excluded).astype(int)
 
     return model, df, estimates

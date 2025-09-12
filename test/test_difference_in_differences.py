@@ -71,6 +71,19 @@ def test_staggered_treatment_effect_close_to_truth():
     model.plot()
 
 
+def test_staggered_treatment_effect_sun_abraham_close_to_truth():
+    treatment_effect = 3
+    data = generated_staggered_treatment_data(treatment_effect=treatment_effect)
+    model = did.StaggeredDID(data=data, unit_col="unit", time_col="time", value_col="outcome", treatment="treated", covariates=None).fit(method="sun_abraham")
+    # Only check post-treatment event times (event_time >= 0)
+    effects = model.model_effects["outcome"]
+    post_effects = effects[effects.index >= 0]["estimate"]
+    assert np.allclose(post_effects, treatment_effect, atol=0.5)
+
+    # testing that the plot function runs without error
+    model.plot()
+
+
 def test_staggered_treatment_on_example(sample_data):
     sample_data["treated"] = (sample_data["year"] >= sample_data["_nfd"]).fillna(0)
     diff_in_diff = did.StaggeredDID(sample_data, unit_col="stfips", time_col="year", value_col="asmrs", treatment="treated", covariates=["pcinc", "cases", "asmrh"])
