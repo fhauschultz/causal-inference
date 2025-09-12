@@ -197,27 +197,25 @@ def estimate_staggered_did_sa(
     cohort_sizes = cohorts.groupby("cohort_start")[unit_col].nunique().sort_index()
 
     stacks = []
-    for g, g_units in cohorts.groupby("cohort_start"):
-        g = int(g)
+    for cohort_start, g_units in cohorts.groupby("cohort_start"):
+        cohort_start = int(cohort_start)
         gset = set(g_units[unit_col])
 
         tmp = df.copy()
         tmp["is_g"] = tmp[unit_col].isin(gset)
-        tmp["_gi"] = tmp[treatment_start_col]
-        tmp["nyt"] = tmp["_gi"].isna() | (tmp[time_col] < tmp["_gi"])
-
-        # keep cohort-g or not-yet-treated rows
-        tmp = tmp.loc[tmp["is_g"] | tmp["nyt"]].copy()
+        tmp["not_yet_or_never_treated"] = tmp[treatment_start_col].isna() | (tmp[time_col] < tmp[treatment_start_col])
+        # then keep cohort-g units or not-yet-treated (plus never-treated) rows
+        tmp = tmp.loc[tmp["is_g"] | tmp["not_yet_or_never_treated"]].copy()
 
         # event-time relative to cohort g
-        tmp["event_time"] = (tmp[time_col] - g).astype(int)
+        tmp["event_time"] = (tmp[time_col] - cohort_start).astype(int)
         if event_time_window is not None:
             lo, hi = event_time_window
             tmp = tmp.loc[(tmp["event_time"] >= lo) & (tmp["event_time"] <= hi)]
 
         # cohort-specific dummies
-        d = pd.get_dummies(tmp["event_time"], prefix=f"et_g{g}", dtype=float)
-        ref = f"et_g{g}_{int(reference_period)}"
+        d = pd.get_dummies(tmp["event_time"], prefix=f"et_g{cohort_start}", dtype=float)
+        ref = f"et_g{cohort_start}_{int(reference_period)}"
         if ref in d.columns:
             d = d.drop(columns=ref)
         if d.shape[1] == 0:
@@ -235,7 +233,7 @@ def estimate_staggered_did_sa(
         yg = tmp[[unit_col, time_col, outcome_col]].copy()
 
         # stacked unit id for entity FE
-        yg["stack_unit"] = yg[unit_col].astype(str) + f"__g{g}"
+        yg["stack_unit"] = yg[unit_col].astype(str) + f"__g{cohort_start}"
         Xg["stack_unit"] = yg["stack_unit"]
         Xg[time_col] = yg[time_col]
 
@@ -246,23 +244,21 @@ def estimate_staggered_did_sa(
         Xg = Xg.apply(pd.to_numeric, errors="coerce").astype(float)
         yg[outcome_col] = pd.to_numeric(yg[outcome_col], errors="coerce").astype(float)
 
-        stacks.append((g, Xg, yg[[outcome_col]], int(cohort_sizes.loc[g])))
+        stacks.append((cohort_start, Xg, yg[[outcome_col]], int(cohort_sizes.loc[cohort_start])))
 
     if not stacks:
         raise ValueError("No estimable cohorts after building event-time dummies.")
-
     # stack
     X = pd.concat([Xg for _, Xg, _, _ in stacks], axis=0).sort_index()
     y = pd.concat([yg for _, _, yg, _ in stacks], axis=0).sort_index()
     weights = {g: w for g, _, _, w in stacks}
 
     # --- minimal cleaning ---
-    # drop rows with NA in y or any event-time dummy (covariates may have NA; we'll impute)
-    et_cols = [c for c in X.columns if c.startswith("et_g")]
     mask = y[outcome_col].notna()
-    if et_cols:
-        mask &= X[et_cols].notna().all(axis=1)
     X, y = X.loc[mask], y.loc[mask]
+
+    et_cols = [c for c in X.columns if c.startswith("et_g")]
+    X[et_cols] = X[et_cols].fillna(0.0)
 
     if X.empty:
         raise ValueError("Design empty after dropping rows with NA outcome/event-time dummies.")
