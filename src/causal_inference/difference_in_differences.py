@@ -160,11 +160,6 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     return model, df, estimates
 
 
-def _make_event_time(s, g):
-    # s: time, g: cohort start time
-    return s - g
-
-
 def estimate_staggered_did_sa(
     data,
     unit_col,
@@ -172,17 +167,15 @@ def estimate_staggered_did_sa(
     outcome_col,
     treatment_start_col,  # e.g., "_nfd"
     covariates=None,  # optional list of time-varying controls
-    reference_period=-1,  # omitted event time
-    event_time_window=None,  # e.g., (-5, 5) or None
+    reference_period=-1,  # common omitted event time (must exist for all kept cohorts)
+    event_time_window=None,  # e.g., (-10, 10) or None
     alpha=0.10,
     cov_type="clustered",
+    recenter_pre_mean=False,  # if True, shift agg so mean(pre) = 0 for plotting
 ):
     """
-    Minimal Sun & Abraham (2020) stacked event-study with optional covariates.
-    - For each cohort g: keep cohort-g and not-yet-treated units.
-    - Build cohort-specific event-time dummies, drop the reference period.
-    - Stack and estimate PanelOLS with unit & time FE.
-    - Aggregate across cohorts using cohort-size weights.
+    Sun & Abraham stacked event-study with a SINGLE common reference period.
+    Cohorts that lack `reference_period` *in the actually observed rows* are dropped.
     """
     if covariates is None:
         covariates = []
@@ -203,34 +196,42 @@ def estimate_staggered_did_sa(
 
         tmp = df.copy()
         tmp["is_g"] = tmp[unit_col].isin(gset)
+        # not-yet-treated at (i,t): never-treated OR t < unit's own start
         tmp["not_yet_or_never_treated"] = tmp[treatment_start_col].isna() | (tmp[time_col] < tmp[treatment_start_col])
-        # then keep cohort-g units or not-yet-treated (plus never-treated) rows
+        # keep cohort-g or not-yet-treated rows
         tmp = tmp.loc[tmp["is_g"] | tmp["not_yet_or_never_treated"]].copy()
 
         # event-time relative to cohort g
         tmp["event_time"] = (tmp[time_col] - cohort_start).astype(int)
+
+        # optional trimming window
         if event_time_window is not None:
             lo, hi = event_time_window
             tmp = tmp.loc[(tmp["event_time"] >= lo) & (tmp["event_time"] <= hi)]
 
-        # cohort-specific dummies
-        d = pd.get_dummies(tmp["event_time"], prefix=f"et_g{cohort_start}", dtype=float)
+        # >>> NEW: enforce reference AFTER dropping rows with missing outcome
+        tmp_obs = tmp.dropna(subset=[outcome_col])
+        avail = set(tmp_obs["event_time"].unique())
+        if int(reference_period) not in avail:
+            # skip this cohort to maintain a single common reference
+            continue
+
+        # build dummies from actually observed rows and drop the (common) reference
+        d = pd.get_dummies(tmp_obs["event_time"], prefix=f"et_g{cohort_start}", dtype=float)
         ref = f"et_g{cohort_start}_{int(reference_period)}"
-        if ref in d.columns:
-            d = d.drop(columns=ref)
+        d = d.drop(columns=ref)  # exists by the avail check above
         if d.shape[1] == 0:
             continue  # nothing estimable for this cohort
 
-        # build X (dummies + optional covariates) and y
+        # X and y (use the same observed rows)
         X_parts = [d]
         if covariates:
-            cov = tmp[covariates].apply(pd.to_numeric, errors="coerce").astype(float)
-            # very light NA policy: drop covariates that are (almost) constant or all-NA
+            cov = tmp_obs[covariates].apply(pd.to_numeric, errors="coerce").astype(float)
             cov = cov.loc[:, cov.notna().any(axis=0)]
             X_parts.append(cov)
 
         Xg = pd.concat(X_parts, axis=1)
-        yg = tmp[[unit_col, time_col, outcome_col]].copy()
+        yg = tmp_obs[[unit_col, time_col, outcome_col]].copy()
 
         # stacked unit id for entity FE
         yg["stack_unit"] = yg[unit_col].astype(str) + f"__g{cohort_start}"
@@ -247,36 +248,35 @@ def estimate_staggered_did_sa(
         stacks.append((cohort_start, Xg, yg[[outcome_col]], int(cohort_sizes.loc[cohort_start])))
 
     if not stacks:
-        raise ValueError("No estimable cohorts after building event-time dummies.")
-    # stack
+        raise ValueError("No cohorts remain after enforcing the common reference in observed rows. Ensure your window includes the reference and that outcome is observed at that l.")
+
+    # --- stack ---
     X = pd.concat([Xg for _, Xg, _, _ in stacks], axis=0).sort_index()
     y = pd.concat([yg for _, _, yg, _ in stacks], axis=0).sort_index()
     weights = {g: w for g, _, _, w in stacks}
 
-    # --- minimal cleaning ---
+    # minimal cleaning
     mask = y[outcome_col].notna()
     X, y = X.loc[mask], y.loc[mask]
 
     et_cols = [c for c in X.columns if c.startswith("et_g")]
-    X[et_cols] = X[et_cols].fillna(0.0)
+    X[et_cols] = X[et_cols].fillna(0.0)  # other cohorts' dummies are 0 outside cohort
 
     if X.empty:
-        raise ValueError("Design empty after dropping rows with NA outcome/event-time dummies.")
+        raise ValueError("Design empty after dropping rows with NA outcome.")
 
-    # simple within-entity mean imputation for covariates (if any remain)
     cov_cols = [c for c in X.columns if c not in et_cols]
     if cov_cols:
         grp_mean = X[cov_cols].groupby(level=0).transform("mean")
         X[cov_cols] = X[cov_cols].fillna(grp_mean).fillna(0.0)
 
-    # drop all-zero / all-one / globally-constant columns
+    # basic column drops + within-entity variation
     X = X.loc[:, (X != 0).any(axis=0)]
     X = X.loc[:, ~(X == 1).all(axis=0)]
     X = X.loc[:, X.nunique(dropna=False) > 1]
     if X.shape[1] == 0:
         raise ValueError("No regressors left after basic cleaning.")
 
-    # drop regressors with no within-entity variation (absorbed by entity FE)
     demeaned = X.groupby(level=0).transform(lambda c: c - c.groupby(level=0).transform("mean"))
     keep = demeaned.var().replace(0, np.nan).notna()
     X = X.loc[:, keep]
@@ -293,8 +293,8 @@ def estimate_staggered_did_sa(
     for name, val in params.items():
         if not name.startswith("et_g"):
             continue
+        parts = name.split("_")  # ["et","g{g}","{l}"]
         try:
-            parts = name.split("_")  # ["et","g{g}","{l}"]
             g_val = int(parts[1][1:])
             l_val = int(parts[2])
         except Exception:
@@ -308,7 +308,7 @@ def estimate_staggered_did_sa(
     coef["ci_lower"] = coef["estimate"] - z * coef["std_error"]
     coef["ci_upper"] = coef["estimate"] + z * coef["std_error"]
 
-    # interaction-weighted aggregation (weights by cohort size)
+    # interaction-weighted aggregation
     w = pd.Series(weights, name="w")
     coef = coef.merge(w, left_on="cohort_start", right_index=True, how="left")
     coef["w_norm"] = coef.groupby("event_time")["w"].transform(lambda s: s / s.sum())
@@ -319,9 +319,20 @@ def estimate_staggered_did_sa(
     agg["ci_lower"] = agg["estimate"] - z * agg["std_error"]
     agg["ci_upper"] = agg["estimate"] + z * agg["std_error"]
 
-    # add reference period at zero (for plotting)
+    # optional: recenter for plotting so mean(pre) = 0 (does NOT change fit)
+    if recenter_pre_mean and (agg.index < 0).any():
+        pre_mean = agg.loc[agg.index < 0, "estimate"].mean()
+        agg["estimate"] -= pre_mean
+        agg["ci_lower"] -= pre_mean
+        agg["ci_upper"] -= pre_mean
+
+    # ensure the reference period appears in the output (for plotting axis continuity)
     if reference_period not in agg.index:
         agg.loc[int(reference_period), ["estimate", "std_error", "ci_lower", "ci_upper"]] = [0.0, 0.0, 0.0, 0.0]
         agg = agg.sort_index()
 
-    return {"fit": fit, "cohort_effects": coef.set_index(["cohort_start", "event_time"]).sort_index(), "agg_effects": agg}
+    return {
+        "fit": fit,
+        "cohort_effects": coef.set_index(["cohort_start", "event_time"]).sort_index(),
+        "agg_effects": agg,
+    }
