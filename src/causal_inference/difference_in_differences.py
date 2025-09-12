@@ -160,7 +160,7 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     return model, df, estimates
 
 
-def estimate_staggered_did_sa(
+def estimate_staggered_did(
     data,
     unit_col,
     time_col,
@@ -173,30 +173,7 @@ def estimate_staggered_did_sa(
 ):
     """
     Sun & Abraham (2021) interaction-weighted (IW) DiD with staggered adoption.
-    Same signature and return as the original: (model, df, estimates).
-
-    Args:
-        data: DataFrame with panel data.
-        unit_col: Column name for unit identifier.
-        time_col: Column name for time variable (integer-like).
-        outcome_col: Column name for outcome variable.
-        treatment_start_col: Column name for first-treatment period Ei (NaN for never-treated).
-        covariates: List of additional additive covariate column names (optional).
-        reference_period: event-time (typically a pre-period like -1) to omit as baseline.
-        alpha: for CI construction (two-sided).
-        cov_type: PanelOLS cov_type (e.g., "clustered"); clustering is at entity level.
-
-    Returns:
-        model: linearmodels PanelOLS model object (unfitted handle, like original).
-        df: DataFrame augmented with helper columns (_Ei, _ell).
-        estimates: dict with:
-            - 'delta_table': DataFrame of δ_{e,ℓ} with SEs/CIs
-            - 'weights': Pr{Ei=e | Ei ∈ [-ℓ, T-ℓ]} per ℓ
-            - 'iw_by_l': Series of ∑_e δ_{e,ℓ} * weight_{e|ℓ}
-            - 'iw_g': float, average IW over post-period ℓ ≥ 0 (default g)
-            - 'g': list of event-times used for iw_g
-            - 'meta': info on excluded cohorts, trimming, reference period
-            - 'fit': fitted results object (for convenience, if you need it)
+    Same signature and return as your original: (model, df, estimates).
     """
     import pandas as pd
     from scipy.stats import norm
@@ -212,34 +189,37 @@ def estimate_staggered_did_sa(
     df = data.copy()
 
     # --- Cohorts (Ei) and basic panel info ---
-    Ei_raw = df[treatment_start_col]
-    has_never = Ei_raw.isna().any()
-    df["_Ei"] = Ei_raw.fillna(np.inf)
+    # Keep never-treated as NA (pd.NA), NOT inf, in the column we will dummy-code.
+    Ei_series = pd.to_numeric(df[treatment_start_col], errors="coerce")
+    has_never = Ei_series.isna().any()
+
+    # For logic where having an "∞" label helps, make a separate helper with inf
+    Ei_helper = Ei_series.fillna(np.inf)
+    df["_Ei"] = Ei_series  # finite ints/floats or NA only (NO inf)
 
     t_min = df[time_col].min()
     t_max = df[time_col].max()
-    # earliest finite cohort
-    finite_E = df.loc[np.isfinite(df["_Ei"]), "_Ei"]
+
+    finite_E = Ei_helper[np.isfinite(Ei_helper)]
     earliest_treat = finite_E.min() if not finite_E.empty else np.nan
     has_always = np.isfinite(earliest_treat) and (earliest_treat == t_min)
 
-    cohorts = np.sort(df["_Ei"].unique())
-    finite_cohorts = [c for c in cohorts if np.isfinite(c)]
+    all_cohorts_helper = np.sort(Ei_helper.unique())
+    finite_cohorts = [int(c) for c in all_cohorts_helper if np.isfinite(c)]
 
-    # --- Exclusion / trimming per SA rules in your note ---
+    # --- Exclusion / trimming per SA rules ---
     excluded_cohorts = set()
     trim_tmax = None
     if has_never:
-        excluded_cohorts.add(np.inf)  # never-treated cohort indicator
+        excluded_cohorts.add(np.inf)  # conceptually exclude ∞ cohort from interactions
     else:
-        # exclude latest-treated cohort and trim time to <= max{Ei} - 1
         if len(finite_cohorts) == 0:
             raise ValueError("No treated cohorts found.")
         latest = int(np.max(finite_cohorts))
         excluded_cohorts.add(latest)
         trim_tmax = latest - 1
 
-    if has_always:
+    if has_always and np.isfinite(earliest_treat):
         excluded_cohorts.add(int(earliest_treat))
 
     if trim_tmax is not None:
@@ -247,13 +227,14 @@ def estimate_staggered_did_sa(
         t_max = df[time_col].max()
 
     # --- Event time ℓ = t - Ei (NaN for never-treated) ---
+    # Use the NA-bearing Ei column here (no inf).
     df["_ell"] = df[time_col] - df["_Ei"]
-    df["_ell"] = df["_ell"].where(np.isfinite(df["_ell"]), np.nan)
+    df["_ell"] = df["_ell"].where(df["_Ei"].notna(), np.nan)
 
     ref_l = int(reference_period)
 
     # Cohorts to interact (finite, not excluded)
-    cohorts_for_interaction = [int(c) for c in finite_cohorts if c not in excluded_cohorts]
+    cohorts_for_interaction = [e for e in finite_cohorts if e not in excluded_cohorts]
     if len(cohorts_for_interaction) == 0:
         raise ValueError("No cohorts remain after exclusions.")
 
@@ -263,12 +244,14 @@ def estimate_staggered_did_sa(
     ell_for_dummies = [int(l) for l in ell_support if l != ref_l]
 
     # --- Build 1{Ei=e} and 1{ℓ=ℓ} ---
-    # Cohort indicators (cast to Int64 to keep ∞ out)
-    cohort_df = pd.get_dummies(df["_Ei"].astype("Int64"), prefix="cohort").astype(float)
+    # Critically: cast to Pandas nullable Int64, which allows NA (but not inf — we avoided it).
+    cohort_key = df["_Ei"].astype("Int64")
+    cohort_df = pd.get_dummies(cohort_key, prefix="cohort").astype(float)
     cohort_cols = [f"cohort_{e}" for e in cohorts_for_interaction]
     cohort_df = cohort_df.reindex(columns=cohort_cols, fill_value=0.0)
 
-    event_df = pd.get_dummies(df["_ell"].astype("Int64"), prefix="ell").astype(float)
+    event_key = df["_ell"].astype("Int64")
+    event_df = pd.get_dummies(event_key, prefix="ell").astype(float)
     event_cols = [f"ell_{l}" for l in ell_for_dummies if f"ell_{l}" in event_df.columns]
     event_df = event_df.reindex(columns=event_cols, fill_value=0.0)
 
@@ -332,7 +315,8 @@ def estimate_staggered_did_sa(
             )
     delta_table = pd.DataFrame(rows).sort_values(["event_l", "cohort_e"]).reset_index(drop=True)
 
-    # --- Step 2: Weights Pr{Ei=e | Ei∈[-ℓ, T-ℓ]} by sample shares of cohorts among eligible Ei ---
+    # --- Step 2: Weights Pr{Ei=e | Ei∈[-ℓ, T-ℓ]} ---
+    # Use cohort eligibility interval; default to equal mass across eligible cohorts.
     t0_shift = int(t_min)
     T_for_weights = int(t_max - t0_shift)
 
@@ -341,22 +325,19 @@ def estimate_staggered_did_sa(
         b = T_for_weights - l
         lower = a + t0_shift
         upper = b + t0_shift
-        elig = [e for e in cohorts_for_interaction if (e >= lower and e <= upper)]
-        return elig
+        return [e for e in cohorts_for_interaction if (e >= lower and e <= upper)]
 
     weight_rows = []
     for l in sorted(set(int(x) for x in ell_for_dummies)):
         elig = eligible_cohorts_for_l(l)
         if len(elig) == 0:
             continue
-        w = {e: 1.0 / len(elig) for e in elig}  # equal share across eligible cohorts
-        # If you prefer sample-size-weighted by cohort counts, replace with counts from your data.
+        w = {e: 1.0 / len(elig) for e in elig}
         for e, w_e in w.items():
             weight_rows.append({"event_l": int(l), "cohort_e": int(e), "weight": float(w_e)})
 
     weights = pd.DataFrame(weight_rows)
     if weights.empty:
-        # Fallback: uniform over included cohorts for all ℓ (rare)
         weights = pd.DataFrame(
             [(int(l), int(e), 1.0 / max(1, len(cohorts_for_interaction))) for l in ell_for_dummies for e in cohorts_for_interaction],
             columns=["event_l", "cohort_e", "weight"],
@@ -367,30 +348,30 @@ def estimate_staggered_did_sa(
     iw_by_l = merged.groupby("event_l").apply(lambda d: float(np.sum(d["delta_hat"] * d["weight"])))
     iw_by_l = iw_by_l.sort_index()
 
-    # Default g: all post-treatment event-times observed (ℓ >= 0)
+    # Default g: all post-treatment event-times observed (ℓ ≥ 0)
     g = [int(l) for l in iw_by_l.index if l >= 0]
     iw_g = float(np.mean([iw_by_l[l] for l in g])) if len(g) > 0 else np.nan
 
-    # Attach convenient columns to df (for the caller’s inspection)
-    df["_Ei_excluded"] = df["_Ei"].isin(excluded_cohorts).astype(int)
+    # Small helper to flag excluded cohorts
+    df["_Ei_excluded"] = Ei_helper.isin(excluded_cohorts).astype(int)
 
     estimates = {
-        "delta_table": delta_table,  # disaggregated δ_{e,ℓ}
-        "weights": weights.sort_values(["event_l", "cohort_e"]),  # Pr{Ei=e | Ei ∈ [-ℓ, T-ℓ]}
-        "iw_by_l": iw_by_l,  # IW per ℓ
-        "iw_g": iw_g,  # average IW over ℓ ∈ g (post periods)
-        "g": g,  # event-times used for iw_g
+        "delta_table": delta_table,
+        "weights": weights.sort_values(["event_l", "cohort_e"]),
+        "iw_by_l": iw_by_l,
+        "iw_g": iw_g,
+        "g": g,
         "meta": {
             "excluded_cohorts": sorted(
                 [int(c) if np.isfinite(c) else np.inf for c in excluded_cohorts],
                 key=lambda x: (x is not np.inf, x),
             ),
             "time_trimmed_at": int(trim_tmax) if trim_tmax is not None else None,
-            "reference_period": int(ref_l),
+            "reference_period": int(reference_period),
             "covariates": list(covariates) if covariates else [],
-            "notes": ("Sun & Abraham IW estimator with TWFE. Excluded cohorts per rules: never-treated (∞) if present; else latest-treated with time trimmed to t ≤ max{Ei}-1; always-treated excluded if present. Weights computed over eligible cohorts for each ℓ."),
+            "notes": ("Never-treated kept as NA for dummies (no inf), excluded from interactions; if no never-treated, latest cohort excluded and time trimmed to t ≤ max{Ei}-1; always-treated excluded if present."),
         },
-        "fit": fit,  # include the fitted result for convenience, while returning 'model' for API parity
+        "fit": fit,
     }
 
     return model, df, estimates
