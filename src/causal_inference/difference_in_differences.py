@@ -172,27 +172,18 @@ def estimate_staggered_did_sa(
     cov_type="clustered",
 ):
     """
-    Sun & Abraham (2021) interaction-weighted (IW) event study for staggered treatment
-    that mirrors the R did/iplot behavior:
+    Sun & Abraham (2021) interaction-weighted (IW) event study for staggered treatment,
+    tuned to reproduce R's Sun-Abraham estimator behavior, but without lead/lag binning.
 
-      • Observation-level weights at each event time ℓ
-      • Support restriction: cohorts must have data at both ℓ and the reference period
-      • Tail binning (default): ℓ<=-5 pooled to -5, ℓ>=+5 pooled to +5
-      • Unit & time fixed effects; robust to absorbed cols
-
-    Returns:
-        model: PanelOLS model handle
-        df:    input data with helper columns (_Ei, _ell, _Ei_excluded, _ell_binned)
-        estimates: DataFrame indexed by event-time (ℓ_binned), columns:
-                   ['estimate', 'ci_lower', 'ci_upper'], including the reference period.
+    Returns
+    -------
+    model : PanelOLS model handle
+    df    : DataFrame with helper cols (_Ei, _ell, _Ei_excluded)
+    estimates : DataFrame indexed by event-time (ℓ), columns ['estimate','ci_lower','ci_upper'],
+                including the reference period (0 with 0–0 CI).
     """
     import pandas as pd
     from scipy.stats import norm
-
-    # ---- CONFIG to mimic R plotting defaults ----
-    # Set to None to disable binning (show every ℓ separately)
-    lead_bin = -5
-    lag_bin = 5
 
     # ---- Import PanelOLS ----
     try:
@@ -204,10 +195,10 @@ def estimate_staggered_did_sa(
 
     df = data.copy()
 
-    # ---------- Cohorts (Ei) & panel info ----------
-    Ei_series = pd.to_numeric(df[treatment_start_col], errors="coerce")  # NaN => never-treated
+    # ---------- Cohorts (Ei) ----------
+    Ei_series = pd.to_numeric(df[treatment_start_col], errors="coerce")
     has_never = Ei_series.isna().any()
-    Ei_helper = Ei_series.fillna(np.inf)  # for logic only (never used in dummies)
+    Ei_helper = Ei_series.fillna(np.inf)
     df["_Ei"] = Ei_series
 
     t_min = df[time_col].min()
@@ -220,14 +211,12 @@ def estimate_staggered_did_sa(
     all_cohorts_helper = np.sort(Ei_helper.unique())
     finite_cohorts = [int(c) for c in all_cohorts_helper if np.isfinite(c)]
 
-    # ---------- Exclusion / trimming per SA ----------
+    # ---------- Exclusion / trimming ----------
     excluded_cohorts = set()
     trim_tmax = None
     if has_never:
         excluded_cohorts.add(np.inf)
     else:
-        if len(finite_cohorts) == 0:
-            raise ValueError("No treated cohorts found.")
         latest = int(np.max(finite_cohorts))
         excluded_cohorts.add(latest)
         trim_tmax = latest - 1
@@ -239,50 +228,30 @@ def estimate_staggered_did_sa(
         df = df.loc[df[time_col] <= trim_tmax].copy()
         t_max = df[time_col].max()
 
-    # ---------- Event time ℓ = t - Ei (NaN for never-treated) ----------
+    # ---------- Event time ----------
     df["_ell"] = df[time_col] - df["_Ei"]
     df["_ell"] = df["_ell"].where(df["_Ei"].notna(), np.nan)
-
-    # Bin tails à la R plots
     ref_l = int(reference_period)
 
-    def bin_l(l):
-        if pd.isna(l):
-            return np.nan
-        l = int(l)
-        if lead_bin is not None and l <= lead_bin:  # pool far leads
-            return int(lead_bin)
-        if lag_bin is not None and l >= lag_bin:  # pool far lags
-            return int(lag_bin)
-        return l
-
-    df["_ell_binned"] = df["_ell"].apply(bin_l)
-
-    # Eligible cohorts for interactions (finite, not excluded)
     cohorts_for_interaction = [e for e in finite_cohorts if e not in excluded_cohorts]
     if len(cohorts_for_interaction) == 0:
         raise ValueError("No cohorts remain after exclusions.")
 
-    # Event-time support among included cohorts (AFTER BINNING)
-    ell_support = df.loc[df["_Ei"].isin(cohorts_for_interaction), "_ell_binned"].dropna().astype(int).unique()
+    ell_support = df.loc[df["_Ei"].isin(cohorts_for_interaction), "_ell"].dropna().astype(int).unique()
     ell_support = np.sort(ell_support)
+    ell_for_dummies = [int(l) for l in ell_support if int(l) != ref_l]
 
-    # For estimation, we must omit one period: the (possibly binned) reference
-    ref_binned = bin_l(ref_l)
-    ell_for_dummies = [int(l) for l in ell_support if l != ref_binned]
-
-    # ---------- Build dummies ----------
-    cohort_key = df["_Ei"].astype("Int64")  # keeps NA; avoids inf
+    # ---------- Dummies ----------
+    cohort_key = df["_Ei"].astype("Int64")
     cohort_df = pd.get_dummies(cohort_key, prefix="cohort").astype(float)
     cohort_cols = [f"cohort_{e}" for e in cohorts_for_interaction]
     cohort_df = cohort_df.reindex(columns=cohort_cols, fill_value=0.0)
 
-    event_key = df["_ell_binned"].astype("Int64")
+    event_key = df["_ell"].astype("Int64")
     event_df = pd.get_dummies(event_key, prefix="ell").astype(float)
     event_cols = [f"ell_{l}" for l in ell_for_dummies if f"ell_{l}" in event_df.columns]
     event_df = event_df.reindex(columns=event_cols, fill_value=0.0)
 
-    # ---------- Interactions: 1{Ei=e} * 1{ℓ_binned=l} ----------
     inter_cols = []
     inter_mat = []
     for e in cohorts_for_interaction:
@@ -296,7 +265,7 @@ def estimate_staggered_did_sa(
             inter_mat.append(cohort_df[e_col].values * event_df[l_col].values)
 
     if not inter_mat:
-        raise ValueError("No cohort×event-time interactions after exclusions / reference choice.")
+        raise ValueError("No cohort×event interactions after exclusions / reference choice.")
 
     X_int = pd.DataFrame(
         np.column_stack(inter_mat),
@@ -304,16 +273,13 @@ def estimate_staggered_did_sa(
         index=df.index,
     )
 
-    # Additive covariates (not interacted)
     X = X_int.copy()
     if covariates:
         X = pd.concat([X, df[covariates].astype(float)], axis=1)
 
-    # Outcome and panel index
     y = df[[unit_col, time_col, outcome_col]].set_index([unit_col, time_col]).astype(float)[outcome_col]
     X = X.set_index([df[unit_col], df[time_col]])
 
-    # Prune degenerate columns
     if X.shape[1] > 0:
         non_na = X.columns[X.notna().any(axis=0)]
         X = X[non_na]
@@ -321,63 +287,41 @@ def estimate_staggered_did_sa(
             nonzero = X.columns[(X != 0).any(axis=0)]
             X = X[nonzero]
 
-    # ---------- Fit TWFE with FE; allow absorbed cols ----------
-    model = PanelOLS(
-        y,
-        X,
-        entity_effects=True,
-        time_effects=True,
-        drop_absorbed=True,
-        check_rank=False,
-    )
+    # ---------- Fit TWFE ----------
+    model = PanelOLS(y, X, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
     params = fit.params
     cov = fit.cov
     z = norm.ppf(1 - alpha / 2.0)
 
-    # ---------- Observation-level weights & support restriction ----------
-    # A cohort e contributes to ℓ if it has observations at BOTH ℓ and ref_binned.
-    # We then weight by the number of (unit×time) observations at ℓ from that cohort.
-    obs_counts = (
-        df.loc[df["_Ei"].isin(cohorts_for_interaction), [unit_col, "_Ei", "_ell_binned"]]
-        .dropna(subset=["_Ei", "_ell_binned"])
-        .assign(_Ei=lambda d: d["_Ei"].astype(int), _ell_binned=lambda d: d["_ell_binned"].astype(int))
-        .groupby(["_Ei", "_ell_binned"])[unit_col]
-        .size()
-        .rename("n_obs")
-        .reset_index()
-    )
-    # Presence at reference
-    ref_presence = set(obs_counts.loc[obs_counts["_ell_binned"] == int(ref_binned), "_Ei"].tolist())
+    # ---------- Obs counts and support restriction ----------
+    obs_counts = df.loc[df["_Ei"].isin(cohorts_for_interaction), [unit_col, "_Ei", "_ell"]].dropna(subset=["_Ei", "_ell"]).assign(_Ei=lambda d: d["_Ei"].astype(int), _ell=lambda d: d["_ell"].astype(int)).groupby(["_Ei", "_ell"])[unit_col].size().rename("n_obs").reset_index()
+    ref_presence = set(obs_counts.loc[obs_counts["_ell"] == ref_l, "_Ei"].tolist())
 
-    # ---------- Build IW estimates per ℓ (including reference as 0 with 0-CI) ----------
+    # ---------- Build per-ℓ results ----------
     rows = []
     for l in sorted(ell_support):
-        if int(l) == int(ref_binned):
-            rows.append({"event_l": int(l), "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
+        l = int(l)
+        if l == ref_l:
+            rows.append({"event_l": l, "estimate": 0.0, "ci_lower": 0.0, "ci_upper": 0.0})
             continue
 
-        # cohorts with obs at ℓ
-        at_l = obs_counts.loc[obs_counts["_ell_binned"] == int(l)]
+        at_l = obs_counts.loc[obs_counts["_ell"] == l]
         cohorts_at_l = set(at_l["_Ei"].tolist())
-        # enforce support: must also be present at reference
         eligible = sorted(list(cohorts_at_l & ref_presence))
         if len(eligible) == 0:
-            rows.append({"event_l": int(l), "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
-        # weights proportional to observation counts at ℓ
         n_by_e = {int(r["_Ei"]): int(r["n_obs"]) for _, r in at_l.iterrows() if int(r["_Ei"]) in eligible}
         total = float(sum(n_by_e.values()))
         if total <= 0:
-            rows.append({"event_l": int(l), "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
         w_e = {e: n_by_e[e] / total for e in eligible}
 
-        # keep parameters that actually survived absorption
-        names_l = []
-        weights_l = []
+        names_l, weights_l = [], []
         for e in eligible:
             name = f"int_e{int(e)}_l{int(l)}"
             if name in params.index:
@@ -385,28 +329,27 @@ def estimate_staggered_did_sa(
                 weights_l.append(w_e[e])
 
         if len(names_l) == 0:
-            rows.append({"event_l": int(l), "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
+            rows.append({"event_l": l, "estimate": np.nan, "ci_lower": np.nan, "ci_upper": np.nan})
             continue
 
-        # renormalize over kept params (rarely needed, but safe)
         weights_l = np.asarray(weights_l, dtype=float)
         weights_l = weights_l / weights_l.sum()
 
-        beta = params.loc[names_l].values
-        est_l = float(weights_l @ beta)
+        beta_l = params.loc[names_l].values
+        est_l = float(weights_l @ beta_l)
 
         cov_ll = cov.loc[names_l, names_l].values
         var_l = float(weights_l @ cov_ll @ weights_l)
         var_l = max(var_l, 0.0)
         se_l = np.sqrt(var_l)
+
         ci_low = est_l - z * se_l
         ci_high = est_l + z * se_l
 
-        rows.append({"event_l": int(l), "estimate": est_l, "ci_lower": ci_low, "ci_upper": ci_high})
+        rows.append({"event_l": l, "estimate": est_l, "ci_lower": ci_low, "ci_upper": ci_high})
 
     estimates = pd.DataFrame(rows).set_index("event_l").sort_index()
 
-    # Helper flag
     df["_Ei_excluded"] = Ei_helper.isin(excluded_cohorts).astype(int)
 
     return model, df, estimates
