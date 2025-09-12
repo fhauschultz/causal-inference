@@ -194,7 +194,6 @@ def estimate_staggered_did_sa(
     df["_Ei"] = Ei_series
 
     t_min = df[time_col].min()
-    t_max = df[time_col].max()
 
     finite_E = Ei_helper[np.isfinite(Ei_helper)]
     earliest_treat = finite_E.min() if not finite_E.empty else np.nan
@@ -219,7 +218,6 @@ def estimate_staggered_did_sa(
 
     if trim_tmax is not None:
         df = df.loc[df[time_col] <= trim_tmax].copy()
-        t_max = df[time_col].max()
 
     # ---------- event time ----------
     df["_ell"] = df[time_col] - df["_Ei"]
