@@ -246,7 +246,10 @@ def estimate_staggered_did_sa(
         if not pre_ells:
             raise ValueError(f"No observations at requested reference_period ℓ={req_ref}, and no pre-treatment periods available to anchor.")
         eff_ref = max(pre_ells, key=total_obs_at_ell)
-        warnings.warn(f"reference_period={req_ref} has no support; using ℓ={eff_ref} as the anchor.")
+        warnings.warn(
+            f"reference_period={req_ref} has no support; using ℓ={eff_ref} as the anchor.",
+            stacklevel=2,
+        )
     else:
         eff_ref = req_ref
 
