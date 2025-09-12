@@ -18,7 +18,7 @@ class StaggeredDID(BaseCausalInference):
             self.model_effects[self.value_col] = table
             self.models[self.value_col] = self.did_model
         elif method == "sun_abraham":
-            res = estimate_staggered_did_sunab(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, event_time_window=event_time_window, alpha=alpha, cov_type=cov_type)
+            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, event_time_window=event_time_window, alpha=alpha, cov_type=cov_type)
             # Store aggregated SA event-study (safe visual)
             self.model_effects[self.value_col] = res["agg_effects"]
             self.models[self.value_col] = res["fit"]
@@ -160,14 +160,14 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     return model, df, estimates
 
 
-def estimate_staggered_did_sunab(
+def estimate_staggered_did_sa(
     data,
     unit_col,
     time_col,
     outcome_col,
     cohort_col,  # treatment start period per unit; NaN => never-treated
     covariates=None,
-    ref_p=None,  # default: [-1, .F] computed on *eligible* rows
+    ref_p=None,  # default: [-1, .F]  (.F = first relative period)
     ref_c="never",  # "never" => never-treated cohorts as references
     event_time_window=None,  # optional (lo, hi) on relative periods
     alpha=0.05,
@@ -177,87 +177,85 @@ def estimate_staggered_did_sunab(
 ):
     """
     Python analogue of fixest::sunab():
-    Builds a single (relative period x cohort) interaction design, drops ref.p and ref.c,
-    excludes always-treated, fits TWFE (unit & time FE), aggregates to ATT_l using
-    fixest-style model-matrix shares. `.F` is taken on *eligible* rows.
+      - Builds a single (relative period x cohort) interaction design.
+      - Drops ref.p (default [-1, .F]) and ref.c = never-treated.
+      - Excludes always-treated (treated before sample begins).
+      - Fits TWFE with unit/time FE on the full interaction design.
+      - Aggregates to ATT by relative period using fixest-style column shares.
+
+    Returns:
+      {
+        "fit": PanelOLSResults,
+        "cohort_period_coefs": DataFrame with all (l, cohort) CATTs,
+        "agg_effects": DataFrame ATT_l with fixest-style aggregation
+      }
     """
     if covariates is None:
         covariates = []
 
     df = data.copy()
 
-    # 1) relative period
+    # 1) Compute relative period (RP) = time - cohort
     gi = df[cohort_col]
-    df["_rp"] = (df[time_col] - gi).astype("Int64")
+    df["_rp"] = (df[time_col] - gi).astype("Int64")  # Int64 to allow NA
 
-    # 2) always/never treated
+    # Identify sample min/max calendar time for always-treated detection
     t_min = df[time_col].min()
+
+    # 2) Tag cohorts
+    # never-treated: cohort is NaN
     is_never = gi.isna()
-    is_always = gi.notna() & (gi < t_min)  # treated before sample starts
+    # always-treated: treated before sample starts (cohort < t_min)
+    # (these have only non-negative RPs in-sample or no pre-periods at all)
+    is_always = gi.notna() & (gi < t_min)
 
-    # 3) mark treated cohorts (used for cohort dummies)
-    treated_mask = gi.notna() & ~is_always
-
-    # 4) eligibility filter BEFORE computing `.F`
-    # start with rows that could contribute to interactions
-    elig = pd.Series(True, index=df.index)
-
-    # window on relative periods (rows outside window remain in sample, but won't create dummies)
+    # 3) Optional window on RP (like binning/trimming of relative periods)
     if event_time_window is not None:
         lo, hi = event_time_window
-        elig &= df["_rp"].between(lo, hi, inclusive="both")
-
-    # drop missing outcome
-    elig &= df[outcome_col].notna()
-
-    # require treated cohorts for cohort dummies in the interaction *rows*
-    # (never-treated stay in sample as references, but they don't create cohort dummies)
-    elig &= treated_mask
-
-    # compute `.F` on *eligible* rows only
-    rp_obs = pd.to_numeric(df.loc[elig, "_rp"], errors="coerce")
-    if rp_obs.notna().any():
-        rp_min = int(rp_obs.min())
+        in_win = df["_rp"].between(lo, hi, inclusive="both")
+        # rows outside window remain in sample, they just won’t create dummies
     else:
-        rp_min = -1  # fallback; will be harmless if nothing is eligible
+        in_win = df["_rp"].notna()
 
-    # 5) finalize ref.p
+    # 4) Reference periods: default [-1, .F]
+    # .F = first relative period in the data (min over observed _rp)
+    rp_min = int(pd.to_numeric(df["_rp"], errors="coerce").min()) if df["_rp"].notna().any() else -1
     if ref_p is None:
         ref_p = [-1, rp_min]
-    # ensure both refs are observed; if -1 missing, use nearest pre
-    available_rp = set(int(x) for x in rp_obs.dropna().unique())
-    ref_p_clean = []
-    for r in ref_p:
-        rr = int(r)
-        if rr in available_rp:
-            ref_p_clean.append(rr)
-        else:
-            # if requested -1 is missing, pick nearest available negative (if any)
-            if rr == -1:
-                pre = sorted([v for v in available_rp if v < 0])
-                if pre:
-                    ref_p_clean.append(pre[-1])  # closest to 0 from the left
-            # otherwise, skip silently
-    # must keep at least one reference; ensure uniqueness and length>=2 if possible
-    ref_p = sorted(set(ref_p_clean)) if ref_p_clean else [rp_min]
+    ref_p = [int(x) for x in ref_p]
 
-    # 6) build interactions on the rows that will actually create them
-    # rp & cohort values for those rows
-    rows_for_inter = df.index[elig]
-    rp_vals = df.loc[rows_for_inter, "_rp"].astype(int)
-    coh_vals = gi.loc[rows_for_inter].astype(int)
+    # 5) Build factor variables for RP and cohort (treated cohorts only)
+    # Treated cohorts are those with non-missing gi and NOT always-treated
+    treated_mask = gi.notna() & ~is_always
+    treated_cohorts = pd.Series(gi.where(treated_mask), name="cohort_fac")
+    # never-treated cohorts act as references => no cohort dummies for them
 
-    # RP dummies (drop ref.p columns)
-    rp_dum = pd.get_dummies(rp_vals, prefix="rp", dtype=float)
+    # RP dummies only for rows inside window and where RP is observed
+    rp_for_dummies = df.loc[in_win & df["_rp"].notna(), "_rp"].astype(int)
+
+    # cohort factor values aligned on the same rows:
+    cohort_for_dummies = treated_cohorts.loc[rp_for_dummies.index]
+
+    # Drop rows where cohort is NaN (never-treated) from the interaction construction
+    valid_rows = cohort_for_dummies.notna()
+    rp_vals = rp_for_dummies[valid_rows]
+    cohort_vals = cohort_for_dummies[valid_rows].astype(int)
+
+    # 6) Create full interaction matrix: i(RP, cohort)
+    # RP as one-hot (excluding ref.p later), cohort as one-hot (excluding ref.c = never)
+    rp_dum = pd.get_dummies(rp_vals, prefix="rp", dtype=float)  # rp_-3, rp_-2, rp_0, ...
+    # drop reference periods
     for r in set(ref_p):
         col = f"rp_{r}"
         if col in rp_dum.columns:
             rp_dum = rp_dum.drop(columns=col)
 
-    # cohort dummies (no ref.c besides 'never': never-treated don't enter here anyway)
-    coh_dum = pd.get_dummies(coh_vals, prefix="coh", dtype=float)
+    # cohort dummies for treated cohorts only
+    coh_dum = pd.get_dummies(cohort_vals, prefix="coh", dtype=float)  # coh_2003, coh_2004, ...
+    # (ref.c = never-treated => already excluded since we only created coh dummies on treated rows)
 
-    # Kronecker-style interactions for eligible rows, then reindex to full DF (fill others with 0)
+    # Kronecker-style interactions: for each rp col and each coh col
+    # Build on valid_rows index then reindex to full df
     inter_list = []
     for rp_col in rp_dum.columns:
         for coh_col in coh_dum.columns:
@@ -266,31 +264,35 @@ def estimate_staggered_did_sunab(
             inter_list.append(inter_col)
 
     if not inter_list:
-        raise ValueError("No interaction columns created. Check your window or references.")
+        raise ValueError("No interaction columns created. Check your ref.p or the window—it may be dropping everything.")
 
-    M = pd.concat(inter_list, axis=1)
+    M = pd.concat(inter_list, axis=1)  # design on 'valid_rows' index
+    # Reindex M to full df, fill missing with 0 (rows never contribute to these interactions)
     M = M.reindex(df.index).fillna(0.0)
 
-    # 7) design and outcome
+    # 7) Build the full X: interactions + covariates (controls)
     X_parts = [M]
     if covariates:
         cov = df[covariates].apply(pd.to_numeric, errors="coerce").astype(float)
         X_parts.append(cov)
-    X = pd.concat(X_parts, axis=1)
 
+    X = pd.concat(X_parts, axis=1)
     y = df[[unit_col, time_col, outcome_col]].copy()
-    # drop always-treated by NA in outcome (so they’re excluded by PanelOLS)
+    if outcome_col not in y:
+        y[outcome_col] = df[outcome_col]
+
+    # Always-treated => drop (NA outcome so PanelOLS removes them)
     y.loc[is_always, outcome_col] = np.nan
 
-    # set panel indices
+    # Set panel index
     y = y.set_index([unit_col, time_col])
-    X.index = y.index
+    X.index = y.index  # align
 
-    # drop rows with missing outcome
+    # Drop rows with missing outcome
     keep = y[outcome_col].notna()
     X, y = X.loc[keep], y.loc[keep]
 
-    # clean constants
+    # Drop all-zero / constant columns
     X = X.loc[:, (X != 0).any(axis=0)]
     X = X.loc[:, X.nunique(dropna=False) > 1]
 
@@ -298,12 +300,14 @@ def estimate_staggered_did_sunab(
     model = lm.PanelOLS(y[outcome_col], X, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
-    # 9) extract CATTs (all rp×cohort)
+    # 9) Extract CATTs (all (rp, cohort) coefficients)
     params, ses = fit.params, fit.std_errors
     rows = []
     for name, val in params.items():
+        # names like: "rp_-3::cohort::2004"
         if "::cohort::" not in name:
             continue
+        # parse RP and cohort
         try:
             rp_str, coh_str = name.split("::cohort::")
             l = int(rp_str.split("_", 1)[1])
@@ -316,11 +320,14 @@ def estimate_staggered_did_sunab(
 
     catt = pd.DataFrame(rows, columns=["event_time", "cohort_start", "estimate", "std_error", "name"]).sort_values(["event_time", "cohort_start"])
 
-    # 10) fixest-style aggregation across cohorts using model-matrix shares
+    # 10) Fixest-style aggregation by relative period using model-matrix shares
+    # shares = colSums(sign(mm[, v_names])) / sum(colSums(...))
+    # build mm only on kept rows, for the interaction columns
     mm = X[catt["name"].tolist()].copy()
     if use_weights and (weight_col in df.columns):
-        # simple row weights (e.g., frequency weights) – optional
         w = pd.to_numeric(df.loc[mm.index.get_level_values(0), weight_col], errors="coerce").fillna(1.0).values
+        # align weights to mm rows (by entity index); if not provided, fallback to 1
+        # note: in most cases you won’t pass weights; this branch is optional
     else:
         w = np.ones(len(mm), dtype=float)
 
@@ -329,13 +336,17 @@ def estimate_staggered_did_sunab(
     for l, grp in catt.groupby("event_time"):
         cols = grp["name"].tolist()
         sub = mm[cols]
-        # shares = column sums of sign(mm) (entries are 0/1) – optionally weighted
+
+        # column shares (like fixest: using sign of entries; entries are 0/1 anyway)
         col_sums = (np.abs(sub.values) * w[:, None]).sum(axis=0) if use_weights else (np.abs(sub.values)).sum(axis=0)
         if col_sums.sum() == 0:
             continue
         shares = col_sums / col_sums.sum()
+
+        # aggregate coef
         beta = np.dot(shares, grp["estimate"].values)
 
+        # aggregate variance: s'V s over those columns
         V = fit.cov.loc[cols, cols].values
         var = shares @ V @ shares
         se = float(np.sqrt(max(var, 0.0)))
@@ -344,8 +355,8 @@ def estimate_staggered_did_sunab(
 
     agg = pd.DataFrame(agg_rows, columns=["event_time", "estimate", "std_error", "ci_lower", "ci_upper"]).sort_values("event_time").set_index("event_time")
 
-    # ensure references appear at 0 for plotting continuity
-    for r in set(ref_p):
+    # ensure the reference appears at 0 for plotting continuity
+    for r in ref_p:
         if r not in agg.index:
             agg.loc[int(r), ["estimate", "std_error", "ci_lower", "ci_upper"]] = [0.0, 0.0, 0.0, 0.0]
     agg = agg.sort_index()
@@ -354,6 +365,4 @@ def estimate_staggered_did_sunab(
         "fit": fit,
         "cohort_period_coefs": catt.set_index(["event_time", "cohort_start"]).sort_index(),
         "agg_effects": agg,
-        "ref_p_used": ref_p,  # return the actual refs used
-        "rp_min_eligible": rp_min,  # for diagnostics
     }
