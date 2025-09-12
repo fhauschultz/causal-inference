@@ -18,7 +18,7 @@ class StaggeredDID(BaseCausalInference):
             self.model_effects[self.value_col] = table
             self.models[self.value_col] = self.did_model
         elif method == "sun_abraham":
-            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha, cov_type=cov_type)
+            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, event_time_window=event_time_window, alpha=alpha, cov_type=cov_type)
             # Store aggregated SA event-study (safe visual)
             self.model_effects[self.value_col] = res["agg_effects"]
             self.models[self.value_col] = res["fit"]
@@ -160,7 +160,7 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     return model, df, estimates
 
 
-def estimate_staggered_did(
+def estimate_staggered_did_sa(
     data,
     unit_col,
     time_col,
