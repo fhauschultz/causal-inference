@@ -18,7 +18,7 @@ class StaggeredDID(BaseCausalInference):
             self.model_effects[self.value_col] = table
             self.models[self.value_col] = self.did_model
         elif method == "sun_abraham":
-            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, event_time_window=event_time_window, alpha=alpha, cov_type=cov_type)
+            res = estimate_staggered_did_sa(self.data, self.unit_col, self.time_col, self.value_col, "treatment_start", covariates=self.covariates, alpha=alpha, cov_type=cov_type)
             # Store aggregated SA event-study (safe visual)
             self.model_effects[self.value_col] = res["agg_effects"]
             self.models[self.value_col] = res["fit"]
@@ -165,204 +165,232 @@ def estimate_staggered_did_sa(
     unit_col,
     time_col,
     outcome_col,
-    cohort_col,  # treatment start period per unit; NaN => never-treated
+    treatment_start_col,
     covariates=None,
-    ref_p=None,  # default: [-1, .F]  (.F = first relative period)
-    ref_c="never",  # "never" => never-treated cohorts as references
-    event_time_window=None,  # optional (lo, hi) on relative periods
-    alpha=0.05,
+    reference_period=-1.0,
+    alpha=0.1,
     cov_type="clustered",
-    use_weights=False,  # if you pass weights in df["_w"], they’ll be used by aggregation
-    weight_col="_w",
 ):
     """
-    Python analogue of fixest::sunab():
-      - Builds a single (relative period x cohort) interaction design.
-      - Drops ref.p (default [-1, .F]) and ref.c = never-treated.
-      - Excludes always-treated (treated before sample begins).
-      - Fits TWFE with unit/time FE on the full interaction design.
-      - Aggregates to ATT by relative period using fixest-style column shares.
+    Sun & Abraham (2021) interaction-weighted (IW) DiD with staggered adoption.
+    Same signature and return as the original: (model, df, estimates).
+
+    Args:
+        data: DataFrame with panel data.
+        unit_col: Column name for unit identifier.
+        time_col: Column name for time variable (integer-like).
+        outcome_col: Column name for outcome variable.
+        treatment_start_col: Column name for first-treatment period Ei (NaN for never-treated).
+        covariates: List of additional additive covariate column names (optional).
+        reference_period: event-time (typically a pre-period like -1) to omit as baseline.
+        alpha: for CI construction (two-sided).
+        cov_type: PanelOLS cov_type (e.g., "clustered"); clustering is at entity level.
 
     Returns:
-      {
-        "fit": PanelOLSResults,
-        "cohort_period_coefs": DataFrame with all (l, cohort) CATTs,
-        "agg_effects": DataFrame ATT_l with fixest-style aggregation
-      }
+        model: linearmodels PanelOLS model object (unfitted handle, like original).
+        df: DataFrame augmented with helper columns (_Ei, _ell).
+        estimates: dict with:
+            - 'delta_table': DataFrame of δ_{e,ℓ} with SEs/CIs
+            - 'weights': Pr{Ei=e | Ei ∈ [-ℓ, T-ℓ]} per ℓ
+            - 'iw_by_l': Series of ∑_e δ_{e,ℓ} * weight_{e|ℓ}
+            - 'iw_g': float, average IW over post-period ℓ ≥ 0 (default g)
+            - 'g': list of event-times used for iw_g
+            - 'meta': info on excluded cohorts, trimming, reference period
+            - 'fit': fitted results object (for convenience, if you need it)
     """
-    if covariates is None:
-        covariates = []
+    import pandas as pd
+    from scipy.stats import norm
+
+    # Accept either 'linearmodels as lm' or import locally if not present
+    try:
+        import linearmodels as lm
+
+        PanelOLS = lm.PanelOLS
+    except Exception:
+        from linearmodels.panel import PanelOLS
 
     df = data.copy()
 
-    # 1) Compute relative period (RP) = time - cohort
-    gi = df[cohort_col]
-    df["_rp"] = (df[time_col] - gi).astype("Int64")  # Int64 to allow NA
+    # --- Cohorts (Ei) and basic panel info ---
+    Ei_raw = df[treatment_start_col]
+    has_never = Ei_raw.isna().any()
+    df["_Ei"] = Ei_raw.fillna(np.inf)
 
-    # Identify sample min/max calendar time for always-treated detection
     t_min = df[time_col].min()
+    t_max = df[time_col].max()
+    # earliest finite cohort
+    finite_E = df.loc[np.isfinite(df["_Ei"]), "_Ei"]
+    earliest_treat = finite_E.min() if not finite_E.empty else np.nan
+    has_always = np.isfinite(earliest_treat) and (earliest_treat == t_min)
 
-    # 2) Tag cohorts
-    # never-treated: cohort is NaN
-    is_never = gi.isna()
-    # always-treated: treated before sample starts (cohort < t_min)
-    # (these have only non-negative RPs in-sample or no pre-periods at all)
-    is_always = gi.notna() & (gi < t_min)
+    cohorts = np.sort(df["_Ei"].unique())
+    finite_cohorts = [c for c in cohorts if np.isfinite(c)]
 
-    # 3) Optional window on RP (like binning/trimming of relative periods)
-    if event_time_window is not None:
-        lo, hi = event_time_window
-        in_win = df["_rp"].between(lo, hi, inclusive="both")
-        # rows outside window remain in sample, they just won’t create dummies
+    # --- Exclusion / trimming per SA rules in your note ---
+    excluded_cohorts = set()
+    trim_tmax = None
+    if has_never:
+        excluded_cohorts.add(np.inf)  # never-treated cohort indicator
     else:
-        in_win = df["_rp"].notna()
+        # exclude latest-treated cohort and trim time to <= max{Ei} - 1
+        if len(finite_cohorts) == 0:
+            raise ValueError("No treated cohorts found.")
+        latest = int(np.max(finite_cohorts))
+        excluded_cohorts.add(latest)
+        trim_tmax = latest - 1
 
-    # 4) Reference periods: default [-1, .F]
-    # .F = first relative period in the data (min over observed _rp)
-    rp_min = int(pd.to_numeric(df["_rp"], errors="coerce").min()) if df["_rp"].notna().any() else -1
-    if ref_p is None:
-        ref_p = [-1, rp_min]
-    ref_p = [int(x) for x in ref_p]
+    if has_always:
+        excluded_cohorts.add(int(earliest_treat))
 
-    # 5) Build factor variables for RP and cohort (treated cohorts only)
-    # Treated cohorts are those with non-missing gi and NOT always-treated
-    treated_mask = gi.notna() & ~is_always
-    treated_cohorts = pd.Series(gi.where(treated_mask), name="cohort_fac")
-    # never-treated cohorts act as references => no cohort dummies for them
+    if trim_tmax is not None:
+        df = df.loc[df[time_col] <= trim_tmax].copy()
+        t_max = df[time_col].max()
 
-    # RP dummies only for rows inside window and where RP is observed
-    rp_for_dummies = df.loc[in_win & df["_rp"].notna(), "_rp"].astype(int)
+    # --- Event time ℓ = t - Ei (NaN for never-treated) ---
+    df["_ell"] = df[time_col] - df["_Ei"]
+    df["_ell"] = df["_ell"].where(np.isfinite(df["_ell"]), np.nan)
 
-    # cohort factor values aligned on the same rows:
-    cohort_for_dummies = treated_cohorts.loc[rp_for_dummies.index]
+    ref_l = int(reference_period)
 
-    # Drop rows where cohort is NaN (never-treated) from the interaction construction
-    valid_rows = cohort_for_dummies.notna()
-    rp_vals = rp_for_dummies[valid_rows]
-    cohort_vals = cohort_for_dummies[valid_rows].astype(int)
+    # Cohorts to interact (finite, not excluded)
+    cohorts_for_interaction = [int(c) for c in finite_cohorts if c not in excluded_cohorts]
+    if len(cohorts_for_interaction) == 0:
+        raise ValueError("No cohorts remain after exclusions.")
 
-    # 6) Create full interaction matrix: i(RP, cohort)
-    # RP as one-hot (excluding ref.p later), cohort as one-hot (excluding ref.c = never)
-    rp_dum = pd.get_dummies(rp_vals, prefix="rp", dtype=float)  # rp_-3, rp_-2, rp_0, ...
-    # drop reference periods
-    for r in set(ref_p):
-        col = f"rp_{r}"
-        if col in rp_dum.columns:
-            rp_dum = rp_dum.drop(columns=col)
+    # Event-time support among included cohorts
+    ell_support = df.loc[df["_Ei"].isin(cohorts_for_interaction), "_ell"].dropna().astype(int).unique()
+    ell_support = np.sort(ell_support)
+    ell_for_dummies = [int(l) for l in ell_support if l != ref_l]
 
-    # cohort dummies for treated cohorts only
-    coh_dum = pd.get_dummies(cohort_vals, prefix="coh", dtype=float)  # coh_2003, coh_2004, ...
-    # (ref.c = never-treated => already excluded since we only created coh dummies on treated rows)
+    # --- Build 1{Ei=e} and 1{ℓ=ℓ} ---
+    # Cohort indicators (cast to Int64 to keep ∞ out)
+    cohort_df = pd.get_dummies(df["_Ei"].astype("Int64"), prefix="cohort").astype(float)
+    cohort_cols = [f"cohort_{e}" for e in cohorts_for_interaction]
+    cohort_df = cohort_df.reindex(columns=cohort_cols, fill_value=0.0)
 
-    # Kronecker-style interactions: for each rp col and each coh col
-    # Build on valid_rows index then reindex to full df
-    inter_list = []
-    for rp_col in rp_dum.columns:
-        for coh_col in coh_dum.columns:
-            name = f"{rp_col}::cohort::{coh_col.split('_', 1)[1]}"
-            inter_col = (rp_dum[rp_col] * coh_dum[coh_col]).rename(name)
-            inter_list.append(inter_col)
+    event_df = pd.get_dummies(df["_ell"].astype("Int64"), prefix="ell").astype(float)
+    event_cols = [f"ell_{l}" for l in ell_for_dummies if f"ell_{l}" in event_df.columns]
+    event_df = event_df.reindex(columns=event_cols, fill_value=0.0)
 
-    if not inter_list:
-        raise ValueError("No interaction columns created. Check your ref.p or the window—it may be dropping everything.")
+    # Interactions: 1{Ei=e} * 1{ℓ=l}
+    inter_cols = []
+    inter_mat = []
+    for e in cohorts_for_interaction:
+        e_col = f"cohort_{e}"
+        for l in ell_for_dummies:
+            l_col = f"ell_{l}"
+            if l_col not in event_df.columns:
+                continue
+            name = f"int_e{e}_l{l}"
+            inter_cols.append((e, l, name))
+            inter_mat.append(cohort_df[e_col].values * event_df[l_col].values)
 
-    M = pd.concat(inter_list, axis=1)  # design on 'valid_rows' index
-    # Reindex M to full df, fill missing with 0 (rows never contribute to these interactions)
-    M = M.reindex(df.index).fillna(0.0)
+    if not inter_mat:
+        raise ValueError("No cohort×event-time interactions after exclusions. Check inputs/reference_period.")
 
-    # 7) Build the full X: interactions + covariates (controls)
-    X_parts = [M]
+    X_int = pd.DataFrame(
+        np.column_stack(inter_mat),
+        columns=[n for (_, _, n) in inter_cols],
+        index=df.index,
+    )
+
+    # Additive (non-interacted) covariates
+    X = X_int.copy()
     if covariates:
-        cov = df[covariates].apply(pd.to_numeric, errors="coerce").astype(float)
-        X_parts.append(cov)
+        X = pd.concat([X, df[covariates].astype(float)], axis=1)
 
-    X = pd.concat(X_parts, axis=1)
-    y = df[[unit_col, time_col, outcome_col]].copy()
-    if outcome_col not in y:
-        y[outcome_col] = df[outcome_col]
+    # Outcome and index
+    y = df[[unit_col, time_col, outcome_col]].set_index([unit_col, time_col]).astype(float)[outcome_col]
+    X = X.set_index([df[unit_col], df[time_col]])
 
-    # Always-treated => drop (NA outcome so PanelOLS removes them)
-    y.loc[is_always, outcome_col] = np.nan
-
-    # Set panel index
-    y = y.set_index([unit_col, time_col])
-    X.index = y.index  # align
-
-    # Drop rows with missing outcome
-    keep = y[outcome_col].notna()
-    X, y = X.loc[keep], y.loc[keep]
-
-    # Drop all-zero / constant columns
-    X = X.loc[:, (X != 0).any(axis=0)]
-    X = X.loc[:, X.nunique(dropna=False) > 1]
-
-    # 8) Fit TWFE with unit & time FE
-    model = lm.PanelOLS(y[outcome_col], X, entity_effects=True, time_effects=True, drop_absorbed=True, check_rank=False)
+    # --- Fit TWFE with unit & time FE ---
+    model = PanelOLS(y, X, entity_effects=True, time_effects=True)
     fit = model.fit(cov_type=cov_type, cluster_entity=True)
 
-    # 9) Extract CATTs (all (rp, cohort) coefficients)
-    params, ses = fit.params, fit.std_errors
+    # --- Step 1: δ_{e,ℓ} table with SEs/CIs ---
+    params = fit.params
+    bse = fit.std_errors
+    pvals = fit.pvalues
+
+    z = norm.ppf(1 - alpha / 2.0)
     rows = []
-    for name, val in params.items():
-        # names like: "rp_-3::cohort::2004"
-        if "::cohort::" not in name:
+    for e_val, l_val, name in inter_cols:
+        if name in params.index:
+            est = params[name]
+            se = bse[name]
+            rows.append(
+                {
+                    "cohort_e": int(e_val),
+                    "event_l": int(l_val),
+                    "param": name,
+                    "delta_hat": float(est),
+                    "se": float(se),
+                    "ci_low": float(est - z * se),
+                    "ci_high": float(est + z * se),
+                    "pvalue": float(pvals[name]),
+                }
+            )
+    delta_table = pd.DataFrame(rows).sort_values(["event_l", "cohort_e"]).reset_index(drop=True)
+
+    # --- Step 2: Weights Pr{Ei=e | Ei∈[-ℓ, T-ℓ]} by sample shares of cohorts among eligible Ei ---
+    t0_shift = int(t_min)
+    T_for_weights = int(t_max - t0_shift)
+
+    def eligible_cohorts_for_l(l):
+        a = -l
+        b = T_for_weights - l
+        lower = a + t0_shift
+        upper = b + t0_shift
+        elig = [e for e in cohorts_for_interaction if (e >= lower and e <= upper)]
+        return elig
+
+    weight_rows = []
+    for l in sorted(set(int(x) for x in ell_for_dummies)):
+        elig = eligible_cohorts_for_l(l)
+        if len(elig) == 0:
             continue
-        # parse RP and cohort
-        try:
-            rp_str, coh_str = name.split("::cohort::")
-            l = int(rp_str.split("_", 1)[1])
-            g = int(coh_str)
-        except Exception:
-            continue
-        rows.append((l, g, float(val), float(ses.get(name, np.nan)), name))
-    if not rows:
-        raise ValueError("No (relative period × cohort) coefficients found.")
+        w = {e: 1.0 / len(elig) for e in elig}  # equal share across eligible cohorts
+        # If you prefer sample-size-weighted by cohort counts, replace with counts from your data.
+        for e, w_e in w.items():
+            weight_rows.append({"event_l": int(l), "cohort_e": int(e), "weight": float(w_e)})
 
-    catt = pd.DataFrame(rows, columns=["event_time", "cohort_start", "estimate", "std_error", "name"]).sort_values(["event_time", "cohort_start"])
+    weights = pd.DataFrame(weight_rows)
+    if weights.empty:
+        # Fallback: uniform over included cohorts for all ℓ (rare)
+        weights = pd.DataFrame(
+            [(int(l), int(e), 1.0 / max(1, len(cohorts_for_interaction))) for l in ell_for_dummies for e in cohorts_for_interaction],
+            columns=["event_l", "cohort_e", "weight"],
+        )
 
-    # 10) Fixest-style aggregation by relative period using model-matrix shares
-    # shares = colSums(sign(mm[, v_names])) / sum(colSums(...))
-    # build mm only on kept rows, for the interaction columns
-    mm = X[catt["name"].tolist()].copy()
-    if use_weights and (weight_col in df.columns):
-        w = pd.to_numeric(df.loc[mm.index.get_level_values(0), weight_col], errors="coerce").fillna(1.0).values
-        # align weights to mm rows (by entity index); if not provided, fallback to 1
-        # note: in most cases you won’t pass weights; this branch is optional
-    else:
-        w = np.ones(len(mm), dtype=float)
+    # --- Step 3: IW aggregation ---
+    merged = pd.merge(delta_table, weights, on=["event_l", "cohort_e"], how="inner")
+    iw_by_l = merged.groupby("event_l").apply(lambda d: float(np.sum(d["delta_hat"] * d["weight"])))
+    iw_by_l = iw_by_l.sort_index()
 
-    agg_rows = []
-    z = norm.ppf(1 - alpha / 2)
-    for l, grp in catt.groupby("event_time"):
-        cols = grp["name"].tolist()
-        sub = mm[cols]
+    # Default g: all post-treatment event-times observed (ℓ >= 0)
+    g = [int(l) for l in iw_by_l.index if l >= 0]
+    iw_g = float(np.mean([iw_by_l[l] for l in g])) if len(g) > 0 else np.nan
 
-        # column shares (like fixest: using sign of entries; entries are 0/1 anyway)
-        col_sums = (np.abs(sub.values) * w[:, None]).sum(axis=0) if use_weights else (np.abs(sub.values)).sum(axis=0)
-        if col_sums.sum() == 0:
-            continue
-        shares = col_sums / col_sums.sum()
+    # Attach convenient columns to df (for the caller’s inspection)
+    df["_Ei_excluded"] = df["_Ei"].isin(excluded_cohorts).astype(int)
 
-        # aggregate coef
-        beta = np.dot(shares, grp["estimate"].values)
-
-        # aggregate variance: s'V s over those columns
-        V = fit.cov.loc[cols, cols].values
-        var = shares @ V @ shares
-        se = float(np.sqrt(max(var, 0.0)))
-
-        agg_rows.append((int(l), float(beta), se, float(beta - z * se), float(beta + z * se)))
-
-    agg = pd.DataFrame(agg_rows, columns=["event_time", "estimate", "std_error", "ci_lower", "ci_upper"]).sort_values("event_time").set_index("event_time")
-
-    # ensure the reference appears at 0 for plotting continuity
-    for r in ref_p:
-        if r not in agg.index:
-            agg.loc[int(r), ["estimate", "std_error", "ci_lower", "ci_upper"]] = [0.0, 0.0, 0.0, 0.0]
-    agg = agg.sort_index()
-
-    return {
-        "fit": fit,
-        "cohort_period_coefs": catt.set_index(["event_time", "cohort_start"]).sort_index(),
-        "agg_effects": agg,
+    estimates = {
+        "delta_table": delta_table,  # disaggregated δ_{e,ℓ}
+        "weights": weights.sort_values(["event_l", "cohort_e"]),  # Pr{Ei=e | Ei ∈ [-ℓ, T-ℓ]}
+        "iw_by_l": iw_by_l,  # IW per ℓ
+        "iw_g": iw_g,  # average IW over ℓ ∈ g (post periods)
+        "g": g,  # event-times used for iw_g
+        "meta": {
+            "excluded_cohorts": sorted(
+                [int(c) if np.isfinite(c) else np.inf for c in excluded_cohorts],
+                key=lambda x: (x is not np.inf, x),
+            ),
+            "time_trimmed_at": int(trim_tmax) if trim_tmax is not None else None,
+            "reference_period": int(ref_l),
+            "covariates": list(covariates) if covariates else [],
+            "notes": ("Sun & Abraham IW estimator with TWFE. Excluded cohorts per rules: never-treated (∞) if present; else latest-treated with time trimmed to t ≤ max{Ei}-1; always-treated excluded if present. Weights computed over eligible cohorts for each ℓ."),
+        },
+        "fit": fit,  # include the fitted result for convenience, while returning 'model' for API parity
     }
+
+    return model, df, estimates
