@@ -140,8 +140,16 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     df["periods_since_treatment"] = df[time_col] - df[treatment_start_col]
     df["periods_since_treatment"] = df["periods_since_treatment"].fillna(0)
 
+    if reference_period not in df["periods_since_treatment"].values:
+        pre_counts = df.loc[df["periods_since_treatment"] < 0, "periods_since_treatment"].value_counts()
+        if pre_counts.empty:
+            raise ValueError(f"No observations at requested reference_period={reference_period}, and no pre-treatment periods available to anchor.")
+        requested_reference = reference_period
+        reference_period = float(max(pre_counts[pre_counts == pre_counts.max()].index))
+        warnings.warn(f"reference_period={requested_reference} has no support; using {reference_period} as the anchor.", stacklevel=2)
+
     # Optionally, create event-time dummies for dynamic effects
-    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].fillna(0), prefix="event_time", dtype=float)
+    event_time_dummies = pd.get_dummies(df["periods_since_treatment"].astype(float), prefix="event_time", dtype=float)
     # Only keep dummies for post-treatment periods (e.g., 0, 1, 2, ...)
     post_event_dummies = event_time_dummies.loc[:, event_time_dummies.columns.str.contains("event_time_")].drop(columns=f"event_time_{reference_period}")
 
