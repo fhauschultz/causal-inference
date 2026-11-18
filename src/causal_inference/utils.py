@@ -3,6 +3,74 @@ import pandas as pd
 from pandas.api.types import is_datetime64_any_dtype
 
 
+def validate_panel_data(data, unit_col, time_col, value_col, covariates):
+    """Validate the common input schema for causal inference models."""
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("data must be a pandas DataFrame.")
+    if data.empty:
+        raise ValueError("data must contain at least one observation.")
+    if not data.columns.is_unique:
+        raise ValueError("data must not contain duplicate column names.")
+    if not all(isinstance(column, str) and column for column in (unit_col, time_col, value_col)):
+        raise TypeError("unit_col, time_col, and value_col must be non-empty column names.")
+    if len({unit_col, time_col, value_col}) != 3:
+        raise ValueError("unit_col, time_col, and value_col must identify different columns.")
+    if covariates is not None and (not isinstance(covariates, list) or not all(isinstance(column, str) and column for column in covariates)):
+        raise TypeError("covariates must be a list of column names or None.")
+    if covariates and (len(set(covariates)) != len(covariates) or set(covariates) & {unit_col, time_col, value_col}):
+        raise ValueError("covariates must be distinct from each other and from unit, time, and outcome columns.")
+    required = [unit_col, time_col, value_col] + (covariates or [])
+    missing = [column for column in required if column not in data.columns]
+    if missing:
+        raise ValueError(f"data is missing required columns: {missing}.")
+    if "treatment_start" in data.columns:
+        raise ValueError("data must not contain the reserved column 'treatment_start'.")
+    if data[[unit_col, time_col]].isna().any().any():
+        raise ValueError("unit and time columns must not contain missing values.")
+    if data.duplicated([unit_col, time_col]).any():
+        raise ValueError("data must contain at most one observation per unit and time.")
+    if not (pd.api.types.is_numeric_dtype(data[time_col]) or is_datetime64_any_dtype(data[time_col])):
+        raise TypeError(f"time column '{time_col}' must contain numeric or datetime values.")
+    if pd.api.types.is_numeric_dtype(data[time_col]) and not np.isfinite(data[time_col].to_numpy(dtype=float, na_value=np.nan)).all():
+        raise ValueError(f"time column '{time_col}' must contain finite values.")
+    for column in [value_col] + (covariates or []):
+        if not pd.api.types.is_numeric_dtype(data[column]):
+            raise TypeError(f"column '{column}' must contain numeric values.")
+        if not np.isfinite(data[column].to_numpy(dtype=float, na_value=np.nan)).all():
+            raise ValueError(f"column '{column}' must not contain missing or non-finite values.")
+
+
+def validate_treatment(data, unit_col, time_col, value_col, covariates, treatment):
+    """Validate the treatment column or unit-to-start mapping."""
+    if isinstance(treatment, str):
+        if treatment not in data.columns:
+            raise ValueError(f"data is missing treatment column '{treatment}'.")
+        if treatment in {unit_col, time_col, value_col, *(covariates or [])}:
+            raise ValueError("treatment column must be distinct from unit, time, outcome, and covariate columns.")
+        if data[treatment].isna().any() or not data[treatment].isin([0, 1, False, True]).all():
+            raise ValueError(f"treatment column '{treatment}' must contain only 0/1 or boolean values, without missing values.")
+        if not data[treatment].any():
+            raise ValueError(f"treatment column '{treatment}' must identify at least one treated unit.")
+        ordered = data.sort_values([unit_col, time_col])
+        if (ordered[treatment].astype(int).groupby(ordered[unit_col]).diff() < 0).any():
+            raise ValueError(f"treatment column '{treatment}' must remain 1 after a unit is treated.")
+    elif isinstance(treatment, dict):
+        if not treatment:
+            raise ValueError("treatment mapping must identify at least one treated unit.")
+        unknown = [unit for unit in treatment if unit not in set(data[unit_col])]
+        if unknown:
+            raise ValueError(f"treatment mapping contains units not present in data: {unknown}.")
+        starts = pd.Series(list(treatment.values()))
+        if is_datetime64_any_dtype(data[time_col]):
+            parsed = pd.to_datetime(starts, errors="coerce")
+        else:
+            parsed = pd.to_numeric(starts, errors="coerce")
+        if parsed.isna().any() or (not is_datetime64_any_dtype(data[time_col]) and not np.isfinite(parsed.to_numpy(dtype=float)).all()):
+            raise ValueError("treatment mapping must contain valid start times matching the time column.")
+    else:
+        raise TypeError("treatment must be a binary column name or a mapping of unit IDs to start times.")
+
+
 def normalize_treatment(
     df: pd.DataFrame,
     unit_col: str,
@@ -82,6 +150,8 @@ class BaseCausalInference:
         covariates=None,
         model=None,
     ):
+        validate_panel_data(data, unit_col, time_col, value_col, covariates)
+        validate_treatment(data, unit_col, time_col, value_col, covariates, treatment)
         self.covariates = covariates
         self.time_col = time_col
         self.unit_col = unit_col

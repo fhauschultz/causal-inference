@@ -13,8 +13,12 @@ from causal_inference.utils import BaseCausalInference
 class SyntheticControl(BaseCausalInference):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.donors:
+            raise ValueError("SyntheticControl requires at least one untreated donor unit.")
         # using only donor units cov_ have as many observations as the treated unit
         self.data = filter_donor_units(self.data.copy(deep=False), self.treatment, self.unit_col)
+        if not set(self.data[self.unit_col]) & self.donors:
+            raise ValueError("SyntheticControl requires at least one donor with as many observations as the treated units.")
 
     def _fit_standard_synthetic_control(self, treated_unit, experiment_date, training_end_date=None):
         """

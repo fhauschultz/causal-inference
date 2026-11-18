@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: causal-inference
+Version: 0.2.1.dev0+g18e5e2f5e.d20261118
+Requires-Python: >=3.10
+License-File: LICENSE
+Requires-Dist: numpy>=2.0.0
+Requires-Dist: pandas>=2.3.1
+Requires-Dist: matplotlib>=3.10.5
+Requires-Dist: statsmodels>=0.14.5
+Requires-Dist: seaborn>=0.13.0
+Requires-Dist: scikit-learn>=1.7.1
+Provides-Extra: dev
+Requires-Dist: pytest>=8.4.1; extra == "dev"
+Dynamic: license-file

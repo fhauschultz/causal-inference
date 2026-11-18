@@ -12,6 +12,11 @@ from causal_inference.utils import BaseCausalInference
 
 
 class StaggeredDID(BaseCausalInference):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not pd.api.types.is_numeric_dtype(self.data[self.time_col]):
+            raise TypeError("StaggeredDID requires a numeric time column.")
+
     def fit(self, alpha=0.1, cov_type="clustered", method="twfe", event_time_window=None):
         self.models = {}
         self.model_effects = {}

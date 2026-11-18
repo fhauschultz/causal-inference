@@ -1,0 +1,18 @@
+{
+  "files": [
+    ".github/workflows/python-ci.yml",
+    ".gitignore",
+    ".vscode/settings.json",
+    "LICENSE",
+    "README.md",
+    "examples/example.ipynb",
+    "pyproject.toml",
+    "requirements.txt",
+    "src/causal_inference/__init__.py",
+    "src/causal_inference/difference_in_differences.py",
+    "src/causal_inference/synthetic_control.py",
+    "src/causal_inference/utils.py",
+    "test/test_difference_in_differences.py",
+    "test/test_synthetic_control.py"
+  ]
+}
