@@ -143,8 +143,6 @@ def estimate_staggered_did(data, unit_col, time_col, outcome_col, treatment_star
     df = data.copy()
     # Calculate periods since treatment start (NaN for never-treated)
     df["periods_since_treatment"] = df[time_col] - df[treatment_start_col]
-    df["periods_since_treatment"] = df["periods_since_treatment"].fillna(0)
-
     if reference_period not in df["periods_since_treatment"].values:
         pre_counts = df.loc[df["periods_since_treatment"] < 0, "periods_since_treatment"].value_counts()
         if pre_counts.empty:
